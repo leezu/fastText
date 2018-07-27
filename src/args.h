@@ -30,6 +30,13 @@ class Args {
     std::string input;
     std::string output;
     double lr;
+    bool adagrad;
+    double eps;
+    double word_l2;
+    double ngram_l2;
+    int nonzero_words;
+    int nonzero_ngrams;
+    int l2fromepoch;
     int lrUpdateRate;
     int dim;
     int ws;
@@ -51,6 +58,8 @@ class Args {
     std::string pretrainedVectors;
     bool noSave;
     bool saveOutput;
+    bool zeroinitwords;
+    bool zeroinitngrams;
 
     bool qout;
     bool retrain;
