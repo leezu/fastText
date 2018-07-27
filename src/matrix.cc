@@ -57,6 +57,21 @@ void Matrix::addRow(const Vector& vec, int64_t i, real a) {
   }
 }
 
+void Matrix::addRescaleRow(const Vector &vec, int64_t i, real a) {
+  assert(i >= 0);
+  assert(i < m_);
+  assert(vec.size() == n_);
+  for (int64_t j = 0; j < n_; j++) {
+    data_[i * n_ + j] = a * (data_[i * n_ + j] + vec[j]);
+  }
+}
+
+void Matrix::multiplyRow(const real num, int64_t i) {
+  for (auto j = 0; j < n_; j++) {
+    at(i, j) *= num;
+  }
+}
+
 void Matrix::multiplyRow(const Vector& nums, int64_t ib, int64_t ie) {
   if (ie == -1) {
     ie = m_;

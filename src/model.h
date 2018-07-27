@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <vector>
 #include <random>
 #include <utility>
@@ -33,6 +34,13 @@ struct Node {
 class Model {
   protected:
     std::shared_ptr<Matrix> wi_;
+    std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter_;
+    std::shared_ptr<std::vector<real>> wi_state_;
+    std::shared_ptr<std::vector<real>> wo_state_;
+    // std::atomic_int_fast8_t instead of bool for fast atomic operations
+    std::atomic_int64_t *global_counter_;
+    int64_t local_counter_;
+    std::int32_t nwords_;
     std::shared_ptr<Matrix> wo_;
     std::shared_ptr<QMatrix> qwi_;
     std::shared_ptr<QMatrix> qwo_;
@@ -65,7 +73,12 @@ class Model {
 
   public:
     Model(std::shared_ptr<Matrix>, std::shared_ptr<Matrix>,
-          std::shared_ptr<Args>, int32_t);
+          std::shared_ptr<Args>,
+          std::shared_ptr<std::vector<std::atomic_int64_t>>,
+          std::shared_ptr<std::vector<real>>,
+          std::shared_ptr<std::vector<real>>,
+          std::atomic_int64_t *,
+          int32_t, int32_t);
 
     real binaryLogistic(int32_t, bool, real);
     real negativeSampling(int32_t, real);
@@ -82,8 +95,14 @@ class Model {
              Vector&) const;
     void findKBest(int32_t, real, std::vector<std::pair<real, int32_t>>&,
                    Vector&, Vector&) const;
-    void update(const std::vector<int32_t>&, int32_t, real);
-    void computeHidden(const std::vector<int32_t>&, Vector&) const;
+    void update(const std::vector<int32_t>&, int32_t, real, const real, const real);
+    void proximalUpdate(const int32_t &, const real &, const real &);
+    float getNorm(const int32_t &);
+    void forceEagerUpdate(const std::vector<int32_t> &, const real &,
+                          const real &, const real &, const int64_t &);
+    real forceEagerUpdate(const int32_t &, const real &, const real &,
+                          const int64_t &);
+    void computeHidden(const std::vector<int32_t> &, Vector &) const;
     void computeOutputSoftmax(Vector&, Vector&) const;
     void computeOutputSoftmax();
 
