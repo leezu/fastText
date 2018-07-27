@@ -9,6 +9,8 @@
 
 #include "model.h"
 
+#include <fenv.h>
+#include <cfenv>
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
@@ -21,16 +23,19 @@ constexpr int64_t MAX_SIGMOID = 8;
 constexpr int64_t LOG_TABLE_SIZE = 512;
 
 Model::Model(
-    std::shared_ptr<Matrix> wi,
-    std::shared_ptr<Matrix> wo,
+    std::shared_ptr<Matrix> wi, std::shared_ptr<Matrix> wo,
     std::shared_ptr<Args> args,
-    int32_t seed)
-    : hidden_(args->dim),
-      output_(wo->size(0)),
-      grad_(args->dim),
-      rng(seed),
-      quant_(false) {
+    std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter,
+    std::shared_ptr<std::vector<real>> wi_lambda,
+    std::atomic_int64_t *global_counter,
+    int32_t nwords, int32_t seed)
+    : hidden_(args->dim), output_(wo->size(0)), grad_(args->dim),
+      tmp_(args->dim), rng(seed), quant_(false) {
   wi_ = wi;
+  wi_counter_ = wi_counter;
+  wi_lambda_ = wi_lambda;
+  global_counter_ = global_counter;
+  nwords_ = nwords;
   wo_ = wo;
   args_ = args;
   osz_ = wo->size(0);
@@ -42,6 +47,9 @@ Model::Model(
   t_log_.reserve(LOG_TABLE_SIZE + 1);
   initSigmoid();
   initLog();
+#ifndef __APPLE__
+  feenableexcept(FE_OVERFLOW | FE_DIVBYZERO | FE_INVALID);  // FE_UNDERFLOW is ok
+#endif
 }
 
 void Model::setQuantizePointer(std::shared_ptr<QMatrix> qwi,
@@ -137,6 +145,58 @@ void Model::computeHidden(const std::vector<int32_t>& input, Vector& hidden) con
   hidden.mul(1.0 / input.size());
 }
 
+float Model::getNorm(const int32_t &it) { return wi_->l2NormRow(it); }
+
+void Model::forceEagerUpdate(const std::vector<int32_t> &input, const real &lr,
+                             const real &word_l2, const real &ngram_l2,
+                             const int64_t &counter) {
+  for (auto it = input.cbegin(); it != input.cend(); ++it) {
+    auto l2 = (*it < nwords_) ? word_l2 : ngram_l2;
+    if (l2) {
+      forceEagerUpdate(*it, lr, l2, counter);
+    }
+  }
+}
+
+real Model::forceEagerUpdate(const int32_t &it, const real &lr, const real &l2,
+                             const int64_t &counter) {
+  assert(l2 > 0);
+
+  int64_t counter_wi = (*wi_counter_)[it].load();
+  real lambda_wi = (*wi_lambda_)[it];
+  int64_t delay = counter - counter_wi - 1;
+
+  // Only update stale parameters
+  if (delay > 0) {
+    wi_->copyRow(tmp_, it); // Copy parameters to tmp_
+    auto norm = tmp_.norm();
+
+    if (norm > 0) {
+      // map a linear function based on last l2 * lr and current l2 * lr
+      real lambda;
+      if (lambda_wi == lr * l2) {
+        lambda = lambda_wi * delay;
+      } else {
+        lambda = lambda_wi * delay - 0.5 * delay * (lambda_wi - lr * l2);
+      }
+      real scale = std::max(real(0), 1 - lambda / norm);
+
+      // 1. Update counters
+      (*wi_counter_)[it].store(counter);
+      (*wi_lambda_)[it] = lr * l2;
+
+      // 2. Update parameters
+      wi_->setRow(tmp_, it, scale);
+
+      return norm * scale;
+    } else {
+      return 0;
+    }
+  } else {
+    return -1;  // Norm was not calculated
+  }
+}
+
 bool Model::comparePairs(const std::pair<real, int32_t> &l,
                          const std::pair<real, int32_t> &r) {
   return l.first > r.first;
@@ -221,10 +281,19 @@ void Model::dfs(int32_t k, real threshold, int32_t node, real score,
   dfs(k, threshold, tree[node].right, score + std_log(f), heap, hidden);
 }
 
-void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
+void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
+                   const real word_l2, const real ngram_l2) {
   assert(target >= 0);
   assert(target < osz_);
-  if (input.size() == 0) return;
+  if (input.size() == 0)
+    return;
+
+  local_counter_ = (*global_counter_)++;
+  if (word_l2 > 0 || ngram_l2 > 0) {
+    grad_.zero();
+    forceEagerUpdate(input, lr, word_l2, ngram_l2, local_counter_);
+  }
+
   computeHidden(input, hidden_);
   if (args_->loss == loss_name::ns) {
     loss_ += negativeSampling(target, lr);
@@ -238,12 +307,36 @@ void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
   if (args_->model == model_name::sup) {
     grad_.mul(1.0 / input.size());
   }
+
   for (auto it = input.cbegin(); it != input.cend(); ++it) {
-    wi_->addRow(grad_, *it, 1.0);
+    auto l2 = (*it < nwords_) ? word_l2 : ngram_l2;
+    proximalUpdate(*it, lr, l2);
   }
 }
 
-void Model::setTargetCounts(const std::vector<int64_t>& counts) {
+void Model::proximalUpdate(const int32_t &it, const real &lr, const real &l2) {
+  // Only update stale parameters
+  if ((*wi_counter_)[it].load() <= local_counter_) {
+    (*wi_counter_)[it].store(local_counter_);
+    (*wi_lambda_)[it] = lr * l2;
+
+    // 1. Copy parameter and add gradient
+    wi_->copyRow(tmp_, it, grad_);
+    auto norm = tmp_.norm();
+
+    // 1. Write (possibly soft-thresheld) parameter
+    real scale;
+    if (l2 > 0 && norm > 0) {
+      real lambda = lr * l2;
+      real scale = std::max(real(0), 1 - lambda / norm);
+      wi_->setRow(tmp_, it, scale);
+    } else {
+      wi_->setRow(tmp_, it);
+    }
+  }
+}
+
+void Model::setTargetCounts(const std::vector<int64_t> &counts) {
   assert(counts.size() == osz_);
   if (args_->loss == loss_name::ns) {
     initTableNegatives(counts);

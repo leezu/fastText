@@ -18,6 +18,10 @@ namespace fasttext {
 
 Args::Args() {
   lr = 0.05;
+  word_l2 = 0;
+  ngram_l2 = 0;
+  nonzero_words = -1;
+  nonzero_ngrams = -1;
   dim = 100;
   ws = 5;
   epoch = 5;
@@ -39,6 +43,8 @@ Args::Args() {
   pretrainedVectors = "";
   noSave = false;
   saveOutput = false;
+  zeroinitwords = false;
+  zeroinitngrams = false;
 
   qout = false;
   retrain = false;
@@ -108,6 +114,12 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         output = std::string(args.at(ai + 1));
       } else if (args[ai] == "-lr") {
         lr = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-word-l2") {
+        word_l2 = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-ngram-l2") {
+        ngram_l2 = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-l2fromepoch") {
+        l2fromepoch = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-lrUpdateRate") {
         lrUpdateRate = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-dim") {
@@ -122,6 +134,10 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         minCountLabel = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-maxNumWords") {
         maxNumWords = std::stoi(args.at(ai + 1));
+      } else if (args[ai] == "-nonzero-words") {
+        nonzero_words = std::stoi(args.at(ai + 1));
+      } else if (args[ai] == "-nonzero-ngrams") {
+        nonzero_ngrams = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-neg") {
         neg = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-wordNgrams") {
@@ -154,8 +170,17 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         verbose = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-pretrainedVectors") {
         pretrainedVectors = std::string(args.at(ai + 1));
+      } else if (args[ai] == "-zeroinitwords") {
+        zeroinitwords = true;
+        ai--;
+      } else if (args[ai] == "-zeroinitngrams") {
+        zeroinitngrams = true;
+        ai--;
       } else if (args[ai] == "-noSave") {
         noSave = true;
+        ai--;
+      } else if (args[ai] == "-zeroinitwords") {
+        zeroinitwords = true;
         ai--;
       } else if (args[ai] == "-saveOutput") {
         saveOutput = true;
@@ -230,6 +255,10 @@ void Args::printTrainingHelp() {
     << "\nThe following arguments for training are optional:\n"
     << "  -lr                 learning rate [" << lr << "]\n"
     << "  -lrUpdateRate       change the rate of updates for the learning rate [" << lrUpdateRate << "]\n"
+    << "  -word-l2            L2 penalty applied to word vetcors [" << word_l2 << "]\n"
+    << "  -ngram-l2           L2 penalty applied to ngram vectors [" << ngram_l2 << "]\n"
+    << "  -nonzero-words      Adjust L2 penalty to obtain [" << nonzero_words << "] nonzero words\n"
+    << "  -nonzero-ngrams     Adjust L2 penalty to obtain [" << nonzero_ngrams << "] nonzero ngrams\n"
     << "  -dim                size of word vectors [" << dim << "]\n"
     << "  -ws                 size of the context window [" << ws << "]\n"
     << "  -epoch              number of epochs [" << epoch << "]\n"
