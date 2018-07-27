@@ -37,6 +37,15 @@ class FastText {
 
   std::shared_ptr<Matrix> input_;
   std::shared_ptr<Matrix> output_;
+  std::shared_ptr<std::vector<std::atomic_int64_t>> input_counter_;
+  std::shared_ptr<std::vector<real>> input_lambda_;
+  std::atomic_int64_t global_counter_ {0};
+  std::atomic_int64_t num_nonzero_words_ {0};
+  std::atomic_int64_t num_nonzero_ngrams_ {0};
+  real norm_words_ {0};
+  real norm_ngrams_ {0};
+  real norm_words_max_ {0};
+  real norm_ngrams_max_ {0};
 
   std::shared_ptr<QMatrix> qinput_;
   std::shared_ptr<QMatrix> qoutput_;
@@ -85,11 +94,11 @@ class FastText {
 
   void supervised(
       Model&,
-      real,
+      real, const real, const real,
       const std::vector<int32_t>&,
       const std::vector<int32_t>&);
-  void cbow(Model&, real, const std::vector<int32_t>&);
-  void skipgram(Model&, real, const std::vector<int32_t>&);
+  void cbow(Model&, real, const real, const real, const std::vector<int32_t>&);
+  void skipgram(Model&, real, const real, const real, const std::vector<int32_t>&);
   std::vector<int32_t> selectEmbeddings(int32_t) const;
   void getSentenceVector(std::istream&, Vector&);
   void quantize(const Args);
@@ -110,6 +119,7 @@ class FastText {
       std::vector<std::pair<real, std::string>>& results);
   void analogies(int32_t);
   void trainThread(int32_t);
+  void eagerUpdateThread(int32_t);
   void train(const Args);
 
   void loadVectors(std::string);

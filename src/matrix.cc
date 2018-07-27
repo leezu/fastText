@@ -57,6 +57,39 @@ void Matrix::addRow(const Vector& vec, int64_t i, real a) {
   }
 }
 
+void Matrix::setRow(const Vector &vec, int64_t i, real a) {
+  assert(i >= 0);
+  assert(i < m_);
+  assert(vec.size() == n_);
+  for (int64_t j = 0; j < n_; j++) {
+    data_[i * n_ + j] = a * vec[j];
+  }
+}
+
+void Matrix::copyRow(Vector &vec, int64_t i, real a) {
+  assert(i >= 0);
+  assert(i < m_);
+  assert(vec.size() == n_);
+  for (int64_t j = 0; j < n_; j++) {
+    vec[j] = a * data_[i * n_ + j];
+  }
+}
+
+void Matrix::copyRow(Vector &vec, int64_t i, Vector &a) {
+  assert(i >= 0);
+  assert(i < m_);
+  assert(vec.size() == n_);
+  for (int64_t j = 0; j < n_; j++) {
+    vec[j] = a[j] + data_[i * n_ + j];
+  }
+}
+
+void Matrix::multiplyRow(const real num, int64_t i) {
+  for (auto j = 0; j < n_; j++) {
+    at(i, j) *= num;
+  }
+}
+
 void Matrix::multiplyRow(const Vector& nums, int64_t ib, int64_t ie) {
   if (ie == -1) {
     ie = m_;
@@ -88,13 +121,21 @@ void Matrix::divideRow(const Vector& denoms, int64_t ib, int64_t ie) {
 }
 
 real Matrix::l2NormRow(int64_t i) const {
-  auto norm = 0.0;
+  real ssq = 0;
+  real scale = 0;
   for (auto j = 0; j < n_; j++) {
-    norm += at(i, j) * at(i, j);
+    real atij = at(i, j);
+    if (atij != 0) {
+      auto abs = std::abs(atij);
+      if (scale < abs) {
+        ssq = 1 + ssq * (scale / abs) * (scale / abs);
+        scale = abs;
+      } else {
+        ssq = ssq + (abs / scale) * (abs / scale);
+      }
+    }
   }
-  if (std::isnan(norm)) {
-    throw std::runtime_error("Encountered NaN.");
-  }
+  auto norm =  scale * std::sqrt(ssq);
   return std::sqrt(norm);
 }
 
