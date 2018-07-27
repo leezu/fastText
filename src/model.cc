@@ -9,6 +9,8 @@
 
 #include "model.h"
 
+#include <fenv.h>
+#include <cfenv>
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
@@ -21,16 +23,21 @@ constexpr int64_t MAX_SIGMOID = 8;
 constexpr int64_t LOG_TABLE_SIZE = 512;
 
 Model::Model(
-    std::shared_ptr<Matrix> wi,
-    std::shared_ptr<Matrix> wo,
+    std::shared_ptr<Matrix> wi, std::shared_ptr<Matrix> wo,
     std::shared_ptr<Args> args,
-    int32_t seed)
-    : hidden_(args->dim),
-      output_(wo->size(0)),
-      grad_(args->dim),
-      rng(seed),
-      quant_(false) {
+    std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter,
+    std::shared_ptr<std::vector<real>> wi_state,
+    std::shared_ptr<std::vector<real>> wo_state,
+    std::atomic_int64_t *global_counter,
+    int32_t nwords, int32_t seed)
+    : hidden_(args->dim), output_(wo->size(0)), grad_(args->dim),
+      rng(seed), quant_(false) {
   wi_ = wi;
+  wi_counter_ = wi_counter;
+  wi_state_ = wi_state;
+  wo_state_ = wo_state;
+  global_counter_ = global_counter;
+  nwords_ = nwords;
   wo_ = wo;
   args_ = args;
   osz_ = wo->size(0);
@@ -42,6 +49,10 @@ Model::Model(
   t_log_.reserve(LOG_TABLE_SIZE + 1);
   initSigmoid();
   initLog();
+#ifndef __APPLE__
+  // FE_OVERFLOW, FE_UNDERFLOW may reasonably occur
+  feenableexcept(FE_DIVBYZERO | FE_INVALID);
+#endif
 }
 
 void Model::setQuantizePointer(std::shared_ptr<QMatrix> qwi,
@@ -55,8 +66,27 @@ void Model::setQuantizePointer(std::shared_ptr<QMatrix> qwi,
 
 real Model::binaryLogistic(int32_t target, bool label, real lr) {
   real score = sigmoid(wo_->dotRow(hidden_, target));
-  real alpha = lr * (real(label) - score);
+  real alpha = (real(label) - score);
+
+  // lr for grad_ will be calculated in proximalUpdate for AdaGrad
+  if (!args_->adagrad) {
+    alpha *= lr;
+  }
   grad_.addRow(*wo_, target, alpha);
+
+  // lr for wo_[target] must be calculated here
+  if (args_->adagrad) {
+    // 1. Update state
+    (*wo_state_)[target] +=
+        std::inner_product(&(wo_->data()[target * wo_->cols()]),
+                           &(wo_->data()[target * wo_->cols() + wo_->cols()]),
+                           &(wo_->data()[target * wo_->cols()]), 0.0) /
+        wo_->cols();
+
+    // 2. Adapt alpha based on AdaGrad lr
+    alpha *= lr / std::sqrt(args_->eps + (*wo_state_)[target]);
+  }
+
   wo_->addRow(hidden_, target, alpha);
   if (label) {
     return -log(score);
@@ -117,7 +147,13 @@ real Model::softmax(int32_t target, real lr) {
   computeOutputSoftmax();
   for (int32_t i = 0; i < osz_; i++) {
     real label = (i == target) ? 1.0 : 0.0;
-    real alpha = lr * (label - output_[i]);
+    real alpha;
+    if (!args_->adagrad) {
+      alpha = lr * (label - output_[i]);
+    } else {
+      alpha = (label - output_[i]);
+    }
+
     grad_.addRow(*wo_, i, alpha);
     wo_->addRow(hidden_, i, alpha);
   }
@@ -135,6 +171,67 @@ void Model::computeHidden(const std::vector<int32_t>& input, Vector& hidden) con
     }
   }
   hidden.mul(1.0 / input.size());
+}
+
+float Model::getNorm(const int32_t &it) { return wi_->l2NormRow(it); }
+
+void Model::forceEagerUpdate(const std::vector<int32_t> &input, const real &lr,
+                             const real &word_l2, const real &ngram_l2,
+                             const int64_t &counter) {
+  for (auto it = input.cbegin(); it != input.cend(); ++it) {
+    auto l2 = (*it < nwords_) ? word_l2 : ngram_l2;
+    if (l2) {
+      forceEagerUpdate(*it, lr, l2, counter);
+    }
+  }
+}
+
+real Model::forceEagerUpdate(const int32_t &it, const real &lr_, const real &l2,
+                             const int64_t &counter) {
+  assert(l2 > 0);
+  real lr = lr_;
+
+  int64_t counter_wi = (*wi_counter_)[it].load();
+  int64_t delay = (counter - 1) - counter_wi;
+
+  // Only update stale parameters
+  if (delay <= 0) {
+    return -1; // Norm was not calculated
+  }
+
+  auto norm = wi_->l2NormRow(it);
+
+  if (norm > 0) {
+    if (args_->adagrad) {
+      lr = lr / std::sqrt(args_->eps + (*wi_state_)[it]);
+    }
+
+    real scale{1};
+    real lambda = lr * l2;
+    if (!args_->adagrad) {
+      lambda = (lambda + (*wi_state_)[it]) / 2;
+    }
+
+    // Only exact when running with AdaGrad
+    // This may FE_OVERFLOW
+    scale = std::max(real(0), 1 - lambda / norm);
+    if (scale > 0) {
+      scale = std::pow(scale, real(delay));
+    }
+
+    // 1. Update counters
+    (*wi_counter_)[it].store(counter - 1);
+    if (!args_->adagrad) {
+      (*wi_state_)[it] = lr * l2;
+    }
+
+    // 2. Update parameters
+    wi_->multiplyRow(scale, it);
+
+    return norm * scale;
+  } else {
+    return 0;
+  }
 }
 
 bool Model::comparePairs(const std::pair<real, int32_t> &l,
@@ -221,10 +318,19 @@ void Model::dfs(int32_t k, real threshold, int32_t node, real score,
   dfs(k, threshold, tree[node].right, score + std_log(f), heap, hidden);
 }
 
-void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
+void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
+                   const real word_l2, const real ngram_l2) {
   assert(target >= 0);
   assert(target < osz_);
-  if (input.size() == 0) return;
+  if (input.size() == 0)
+    return;
+
+  local_counter_ = (*global_counter_)++;
+  if (word_l2 > 0 || ngram_l2 > 0) {
+    grad_.zero();
+    forceEagerUpdate(input, lr, word_l2, ngram_l2, local_counter_);
+  }
+
   computeHidden(input, hidden_);
   if (args_->loss == loss_name::ns) {
     loss_ += negativeSampling(target, lr);
@@ -238,8 +344,49 @@ void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
   if (args_->model == model_name::sup) {
     grad_.mul(1.0 / input.size());
   }
+
   for (auto it = input.cbegin(); it != input.cend(); ++it) {
-    wi_->addRow(grad_, *it, 1.0);
+    auto l2 = (*it < nwords_) ? word_l2 : ngram_l2;
+    proximalUpdate(*it, lr, l2);
+  }
+}
+
+void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
+  real lr = lr_;
+  if ((*wi_counter_)[it].load() <= local_counter_) {
+    (*wi_counter_)[it].store(local_counter_);
+  }
+
+  if (args_->adagrad) {
+    // 1. Update state
+    (*wi_state_)[it] +=
+        std::inner_product(grad_.data(), grad_.data() + grad_.size(),
+                           grad_.data(), 0.0) /
+        grad_.size();
+
+    // 2. Rescale gradient by new lr
+    lr = lr / std::sqrt(args_->eps + (*wi_state_)[it]);
+    grad_.mul(lr);
+  } else {
+    (*wi_state_)[it] = lr * l2;
+  }
+
+  if (l2 > 0) {
+    Vector tmp(grad_.size());
+    for (int i{0}; i < grad_.size(); i++) {
+      tmp[i] = wi_->at(it, i) + grad_[i];
+    }
+    real norm = tmp.norm();
+
+    real lambda = lr * l2;
+    if (norm > 0) {
+      real scale = std::max(real(0), 1 - lambda / norm);
+      wi_->addRescaleRow(grad_, it, scale);
+    } else {
+      wi_->multiplyRow(0, it);
+    }
+  } else {
+    wi_->addRow(grad_, it, 1);
   }
 }
 
