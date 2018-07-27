@@ -9,6 +9,8 @@
 
 #include "model.h"
 
+#include <fenv.h>
+#include <cfenv>
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
@@ -24,13 +26,19 @@ Model::Model(
     std::shared_ptr<Matrix> wi,
     std::shared_ptr<Matrix> wo,
     std::shared_ptr<Args> args,
+    std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter,
+    std::atomic_int64_t * global_counter, int32_t nwords,
     int32_t seed)
     : hidden_(args->dim),
       output_(wo->size(0)),
       grad_(args->dim),
+      tmp_(args->dim),
       rng(seed),
       quant_(false) {
   wi_ = wi;
+  wi_counter_ = wi_counter;
+  global_counter_ = global_counter;
+  nwords_ = nwords;
   wo_ = wo;
   args_ = args;
   osz_ = wo->size(0);
@@ -42,6 +50,7 @@ Model::Model(
   t_log_.reserve(LOG_TABLE_SIZE + 1);
   initSigmoid();
   initLog();
+  feenableexcept(FE_UNDERFLOW | FE_OVERFLOW | FE_DIVBYZERO | FE_INVALID);
 }
 
 void Model::setQuantizePointer(std::shared_ptr<QMatrix> qwi,
@@ -137,6 +146,27 @@ void Model::computeHidden(const std::vector<int32_t>& input, Vector& hidden) con
   hidden.mul(1.0 / input.size());
 }
 
+void Model::forceEagerUpdate(const std::vector<int32_t> &input,
+                             const real &word_l2, const real &ngram_l2) {
+  grad_.zero();
+  for (auto it = input.cbegin(); it != input.cend(); ++it) {
+    forceEagerUpdate(*it, word_l2, ngram_l2, false);
+  }
+}
+
+void Model::forceEagerUpdate(const int32_t &it, const real &word_l2,
+                             const real &ngram_l2, const bool zero_grad) {
+  if (zero_grad) {
+    grad_.zero();
+  }
+  const int64_t delay = *global_counter_ - (*wi_counter_)[it];
+  if (delay > 0) {
+    auto l2 = (it < nwords_) ? word_l2 : ngram_l2;
+    proximalUpdate(it, l2, delay);
+    (*wi_counter_)[it].store(*global_counter_);
+  }
+}
+
 bool Model::comparePairs(const std::pair<real, int32_t> &l,
                          const std::pair<real, int32_t> &r) {
   return l.first > r.first;
@@ -221,10 +251,14 @@ void Model::dfs(int32_t k, real threshold, int32_t node, real score,
   dfs(k, threshold, tree[node].right, score + std_log(f), heap, hidden);
 }
 
-void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
+void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
+                   const real word_l2, const real ngram_l2) {
   assert(target >= 0);
   assert(target < osz_);
   if (input.size() == 0) return;
+  if (word_l2 > 0 || ngram_l2 > 0) {
+    forceEagerUpdate(input, word_l2, ngram_l2);
+  }
   computeHidden(input, hidden_);
   if (args_->loss == loss_name::ns) {
     loss_ += negativeSampling(target, lr);
@@ -238,12 +272,25 @@ void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
   if (args_->model == model_name::sup) {
     grad_.mul(1.0 / input.size());
   }
+
   for (auto it = input.cbegin(); it != input.cend(); ++it) {
-    wi_->addRow(grad_, *it, 1.0);
+    auto l2 = (*it < nwords_) ? word_l2 : ngram_l2;
+    proximalUpdate(*it, l2);
   }
+  (*global_counter_)++;
 }
 
-void Model::setTargetCounts(const std::vector<int64_t>& counts) {
+void Model::proximalUpdate(const int32_t &it, const real &l2, const int64_t &delay) {
+  wi_->addRow(grad_, it, 1.0);
+  auto norm = wi_->l2NormRow(it);
+  if (l2 > 0 && norm > 0) {
+    auto scale = std::max(real(0), 1 - (delay * l2) / norm);
+    wi_->multiplyRow(scale, it);
+  }
+  (*wi_counter_)[it].store(*global_counter_);
+}
+
+void Model::setTargetCounts(const std::vector<int64_t> &counts) {
   assert(counts.size() == osz_);
   if (args_->loss == loss_name::ns) {
     initTableNegatives(counts);

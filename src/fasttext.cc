@@ -9,6 +9,7 @@
 
 #include "fasttext.h"
 
+#include <atomic>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -227,7 +228,8 @@ void FastText::loadModel(std::istream& in) {
     output_->load(in);
   }
 
-  model_ = std::make_shared<Model>(input_, output_, args_, 0);
+  model_ = std::make_shared<Model>(input_, output_, args_, input_counter_,
+                                   &global_counter_, dict_->nwords(), 0);
   model_->quant_ = quant_;
   model_->setQuantizePointer(qinput_, qoutput_, args_->qout);
 
@@ -315,7 +317,8 @@ void FastText::quantize(const Args qargs) {
   }
 
   quant_ = true;
-  model_ = std::make_shared<Model>(input_, output_, args_, 0);
+  model_ = std::make_shared<Model>(input_, output_, args_, input_counter_,
+                                   &global_counter_, dict_->nwords(), 0);
   model_->quant_ = quant_;
   model_->setQuantizePointer(qinput_, qoutput_, args_->qout);
   if (args_->model == model_name::sup) {
@@ -327,16 +330,16 @@ void FastText::quantize(const Args qargs) {
 
 void FastText::supervised(
     Model& model,
-    real lr,
+    real lr, const real word_l2, const real ngram_l2,
     const std::vector<int32_t>& line,
     const std::vector<int32_t>& labels) {
   if (labels.size() == 0 || line.size() == 0) return;
   std::uniform_int_distribution<> uniform(0, labels.size() - 1);
   int32_t i = uniform(model.rng);
-  model.update(line, labels[i], lr);
+  model.update(line, labels[i], lr, word_l2, ngram_l2);
 }
 
-void FastText::cbow(Model& model, real lr,
+void FastText::cbow(Model& model, real lr, const real word_l2, const real ngram_l2,
                     const std::vector<int32_t>& line) {
   std::vector<int32_t> bow;
   std::uniform_int_distribution<> uniform(1, args_->ws);
@@ -349,11 +352,11 @@ void FastText::cbow(Model& model, real lr,
         bow.insert(bow.end(), ngrams.cbegin(), ngrams.cend());
       }
     }
-    model.update(bow, line[w], lr);
+    model.update(bow, line[w], lr, word_l2, ngram_l2);
   }
 }
 
-void FastText::skipgram(Model& model, real lr,
+void FastText::skipgram(Model& model, real lr, const real word_l2, const real ngram_l2,
                         const std::vector<int32_t>& line) {
   std::uniform_int_distribution<> uniform(1, args_->ws);
   for (int32_t w = 0; w < line.size(); w++) {
@@ -361,7 +364,7 @@ void FastText::skipgram(Model& model, real lr,
     const std::vector<int32_t>& ngrams = dict_->getSubwords(line[w]);
     for (int32_t c = -boundary; c <= boundary; c++) {
       if (c != 0 && w + c >= 0 && w + c < line.size()) {
-        model.update(ngrams, line[w + c], lr);
+        model.update(ngrams, line[w + c], lr, word_l2, ngram_l2);
       }
     }
   }
@@ -572,7 +575,8 @@ void FastText::trainThread(int32_t threadId) {
   std::ifstream ifs(args_->input);
   utils::seek(ifs, threadId * utils::size(ifs) / args_->thread);
 
-  Model model(input_, output_, args_, threadId);
+  Model model(input_, output_, args_, input_counter_, &global_counter_,
+              dict_->nwords(), threadId);
   if (args_->model == model_name::sup) {
     model.setTargetCounts(dict_->getCounts(entry_type::label));
   } else {
@@ -587,13 +591,13 @@ void FastText::trainThread(int32_t threadId) {
     real lr = args_->lr * (1.0 - progress);
     if (args_->model == model_name::sup) {
       localTokenCount += dict_->getLine(ifs, line, labels);
-      supervised(model, lr, line, labels);
+      supervised(model, lr, args_->word_l2, args_->ngram_l2, line, labels);
     } else if (args_->model == model_name::cbow) {
       localTokenCount += dict_->getLine(ifs, line, model.rng);
-      cbow(model, lr, line);
+      cbow(model, lr, args_->word_l2, args_->ngram_l2, line);
     } else if (args_->model == model_name::sg) {
       localTokenCount += dict_->getLine(ifs, line, model.rng);
-      skipgram(model, lr, line);
+      skipgram(model, lr, args_->word_l2, args_->ngram_l2, line);
     }
     if (localTokenCount > args_->lrUpdateRate) {
       tokenCount_ += localTokenCount;
@@ -663,11 +667,19 @@ void FastText::train(const Args args) {
   ifs.close();
 
   if (args_->pretrainedVectors.size() != 0) {
+    std::cout << "Unsupported.";
+    std::exit(1);
     loadVectors(args_->pretrainedVectors);
   } else {
     input_ = std::make_shared<Matrix>(dict_->nwords()+args_->bucket, args_->dim);
     input_->uniform(1.0 / args_->dim);
   }
+
+  input_counter_ = std::make_shared<std::vector<std::atomic_int64_t>>(dict_->nwords()+args_->bucket);
+  args_->word_l2 *= 1.0 / dict_->nwords();
+  args_->ngram_l2 *= 1.0 / args_->bucket;
+  std::cout << "Rescale -word-l2 by nwords: " << args_->word_l2
+            << " and -ngram-l2 by bucket: " << args_->ngram_l2 << std::endl;
 
   if (args_->model == model_name::sup) {
     output_ = std::make_shared<Matrix>(dict_->nlabels(), args_->dim);
@@ -676,7 +688,8 @@ void FastText::train(const Args args) {
   }
   output_->zero();
   startThreads();
-  model_ = std::make_shared<Model>(input_, output_, args_, 0);
+  model_ = std::make_shared<Model>(input_, output_, args_, input_counter_,
+                                   &global_counter_, dict_->nwords(), 0);
   if (args_->model == model_name::sup) {
     model_->setTargetCounts(dict_->getCounts(entry_type::label));
   } else {
@@ -710,6 +723,74 @@ void FastText::startThreads() {
       printInfo(1.0, loss_, std::cerr);
       std::cerr << std::endl;
   }
+
+  std::cout << "Update all parameters eagerly." << std::endl;
+  Model model(input_, output_, args_, input_counter_, &global_counter_,
+              dict_->nwords(), 0);
+  assert(input_->rows() == dict_->nwords() + args_->bucket);
+  auto m = dict_->nwords() + args_->bucket;
+  int64_t zero_words{0};
+  int64_t zero_ngrams{0};
+  real norm_word_min {std::numeric_limits<real>::max()};
+  real norm_word_sum {0};
+  real norm_word_max {std::numeric_limits<real>::min()};
+  real norm_ngram_min {std::numeric_limits<real>::max()};
+  real norm_ngram_sum {0};
+  real norm_ngram_max {std::numeric_limits<real>::min()};
+
+  for (int64_t i = 0; i < m; i++) {
+    model.forceEagerUpdate(i, args_->word_l2, args_->ngram_l2, false);
+
+    auto norm = input_->l2NormRow(i);
+    if (norm == 0) {
+      if (i < dict_->nwords()) {
+        zero_words++;
+      } else {
+        zero_ngrams++;
+      }
+    }
+  }
+
+  std::cout << "Got " << dict_->nwords() - zero_words
+            << " non-zero word vectors of " << dict_->nwords() << std::endl;
+  std::cout << "Got " << args_->bucket - zero_ngrams
+            << " non-zero ngram vectors of " << args_->bucket << std::endl;
+
+  std::ofstream ofs(args_->output + ".log.tsv");
+  if (!ofs.is_open()) {
+    throw std::invalid_argument(args_->output + ".log.tsv" + " cannot be opened for saving log!");
+  }
+  ofs << "zero_subword_vectors\t"
+      << "nonzero_subword_vectors\t"
+      << "subword_vector_norm_mean\t"
+      << "subword_vector_norm_min\t"
+      << "subword_vector_norm_max\t"
+      << "global_step\t"
+      << "epoch\t"
+      << "batch\t"
+      << "loss\t"
+      << "wps\t"
+      << "zero_word_vectors\t"
+      << "nonzero_word_vectors\t"
+      << "word_vector_norm_mean\t"
+      << "word_vector_norm_min\t"
+      << "word_vector_norm_max" << std::endl;
+  ofs << zero_ngrams << "\t"
+      << args_->bucket - zero_ngrams << "\t"
+      << norm_ngram_sum / args_->bucket << "\t"
+      << norm_ngram_min << "\t"
+      << norm_ngram_max << "\t"
+      << global_counter_ << "\t"
+      << args_->epoch << "\t"
+      << "1\t"
+      << loss_ << "\t"
+      << "0\t"
+      << zero_words << "\t"
+      << dict_->nwords() - zero_words << "\t"
+      << norm_word_sum / args_->bucket << "\t"
+      << norm_word_min << "\t"
+      << norm_word_max << std::endl;
+  ofs.close();
 }
 
 int FastText::getDimension() const {

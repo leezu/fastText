@@ -37,6 +37,8 @@ class FastText {
 
   std::shared_ptr<Matrix> input_;
   std::shared_ptr<Matrix> output_;
+  std::shared_ptr<std::vector<std::atomic_int64_t>> input_counter_;
+  std::atomic_int64_t global_counter_ {0};
 
   std::shared_ptr<QMatrix> qinput_;
   std::shared_ptr<QMatrix> qoutput_;
@@ -85,11 +87,11 @@ class FastText {
 
   void supervised(
       Model&,
-      real,
+      real, const real, const real,
       const std::vector<int32_t>&,
       const std::vector<int32_t>&);
-  void cbow(Model&, real, const std::vector<int32_t>&);
-  void skipgram(Model&, real, const std::vector<int32_t>&);
+  void cbow(Model&, real, const real, const real, const std::vector<int32_t>&);
+  void skipgram(Model&, real, const real, const real, const std::vector<int32_t>&);
   std::vector<int32_t> selectEmbeddings(int32_t) const;
   void getSentenceVector(std::istream&, Vector&);
   void quantize(const Args);

@@ -18,6 +18,8 @@ namespace fasttext {
 
 Args::Args() {
   lr = 0.05;
+  word_l2 = 1;
+  ngram_l2 = 1;
   dim = 100;
   ws = 5;
   epoch = 5;
@@ -107,6 +109,10 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         output = std::string(args.at(ai + 1));
       } else if (args[ai] == "-lr") {
         lr = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-word-l2") {
+        word_l2 = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-ngram-l2") {
+        ngram_l2 = std::stof(args.at(ai + 1));
       } else if (args[ai] == "-lrUpdateRate") {
         lrUpdateRate = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-dim") {
