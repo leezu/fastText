@@ -18,6 +18,8 @@ namespace fasttext {
 
 Args::Args() {
   lr = 0.05;
+  decay = 0.9;
+  eps = 1;
   dim = 100;
   ws = 5;
   epoch = 5;
@@ -106,6 +108,10 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         output = std::string(args.at(ai + 1));
       } else if (args[ai] == "-lr") {
         lr = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-decay") {
+        decay = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-eps") {
+        eps = std::stof(args.at(ai + 1));
       } else if (args[ai] == "-lrUpdateRate") {
         lrUpdateRate = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-dim") {
@@ -221,6 +227,8 @@ void Args::printTrainingHelp() {
   std::cerr
     << "\nThe following arguments for training are optional:\n"
     << "  -lr                 learning rate [" << lr << "]\n"
+    << "  -decay              RMSProp decay rate [" << decay << "]\n"
+    << "  -eps                Epsilon for numerical stability [" << decay << "]\n"
     << "  -lrUpdateRate       change the rate of updates for the learning rate [" << lrUpdateRate << "]\n"
     << "  -dim                size of word vectors [" << dim << "]\n"
     << "  -ws                 size of the context window [" << ws << "]\n"

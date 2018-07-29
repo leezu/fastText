@@ -30,6 +30,8 @@ class Args {
     std::string input;
     std::string output;
     double lr;
+    double decay;
+    double eps;
     int lrUpdateRate;
     int dim;
     int ws;
