@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <vector>
 #include <random>
 #include <utility>
@@ -33,7 +34,13 @@ struct Node {
 class Model {
   protected:
     std::shared_ptr<Matrix> wi_;
+    std::shared_ptr<Matrix> wi_state_;
+    std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter_;
+    std::atomic_int64_t *global_counter_;
+    std::int32_t nwords_;
     std::shared_ptr<Matrix> wo_;
+    std::shared_ptr<Matrix> wo_state_;
+    std::shared_ptr<std::vector<std::atomic_int64_t>> wo_counter_;
     std::shared_ptr<QMatrix> qwi_;
     std::shared_ptr<QMatrix> qwo_;
     std::shared_ptr<Args> args_;
@@ -43,6 +50,7 @@ class Model {
     int32_t hsz_;
     int32_t osz_;
     real loss_;
+    real decay_;
     int64_t nexamples_;
     std::vector<real> t_sigmoid_;
     std::vector<real> t_log_;
@@ -65,7 +73,11 @@ class Model {
 
   public:
     Model(std::shared_ptr<Matrix>, std::shared_ptr<Matrix>,
-          std::shared_ptr<Args>, int32_t);
+          std::shared_ptr<Matrix>, std::shared_ptr<Matrix>,
+          std::shared_ptr<Args>,
+          std::shared_ptr<std::vector<std::atomic_int64_t>>,
+          std::shared_ptr<std::vector<std::atomic_int64_t>>,
+          std::atomic_int64_t *, int32_t);
 
     real binaryLogistic(int32_t, bool, real);
     real negativeSampling(int32_t, real);
@@ -83,7 +95,7 @@ class Model {
     void findKBest(int32_t, real, std::vector<std::pair<real, int32_t>>&,
                    Vector&, Vector&) const;
     void update(const std::vector<int32_t>&, int32_t, real);
-    void computeHidden(const std::vector<int32_t>&, Vector&) const;
+    void computeHidden(const std::vector<int32_t> &, Vector &) const;
     void computeOutputSoftmax(Vector&, Vector&) const;
     void computeOutputSoftmax();
 

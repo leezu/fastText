@@ -9,6 +9,7 @@
 
 #include "fasttext.h"
 
+#include <atomic>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -227,7 +228,9 @@ void FastText::loadModel(std::istream& in) {
     output_->load(in);
   }
 
-  model_ = std::make_shared<Model>(input_, output_, args_, 0);
+  model_ = std::make_shared<Model>(input_, output_, input_state_, output_state_,
+                                   args_, input_counter_, output_counter_,
+                                   &global_counter_, 0);
   model_->quant_ = quant_;
   model_->setQuantizePointer(qinput_, qoutput_, args_->qout);
 
@@ -315,7 +318,9 @@ void FastText::quantize(const Args qargs) {
   }
 
   quant_ = true;
-  model_ = std::make_shared<Model>(input_, output_, args_, 0);
+  model_ = std::make_shared<Model>(input_, output_, input_state_, output_state_,
+                                   args_, input_counter_, output_counter_,
+                                   &global_counter_, 0);
   model_->quant_ = quant_;
   model_->setQuantizePointer(qinput_, qoutput_, args_->qout);
   if (args_->model == model_name::sup) {
@@ -572,7 +577,8 @@ void FastText::trainThread(int32_t threadId) {
   std::ifstream ifs(args_->input);
   utils::seek(ifs, threadId * utils::size(ifs) / args_->thread);
 
-  Model model(input_, output_, args_, threadId);
+  Model model(input_, output_, input_state_, output_state_, args_,
+              input_counter_, output_counter_, &global_counter_, threadId);
   if (args_->model == model_name::sup) {
     model.setTargetCounts(dict_->getCounts(entry_type::label));
   } else {
@@ -663,20 +669,33 @@ void FastText::train(const Args args) {
   ifs.close();
 
   if (args_->pretrainedVectors.size() != 0) {
+    std::cout << "Unsupported.";
+    std::exit(1);
     loadVectors(args_->pretrainedVectors);
   } else {
     input_ = std::make_shared<Matrix>(dict_->nwords()+args_->bucket, args_->dim);
     input_->uniform(1.0 / args_->dim);
   }
 
+  input_state_ = std::make_shared<Matrix>(dict_->nwords()+args_->bucket, args_->dim);
+  input_state_->zero();
+  input_counter_ = std::make_shared<std::vector<std::atomic_int64_t>>(dict_->nwords()+args_->bucket);
+
   if (args_->model == model_name::sup) {
     output_ = std::make_shared<Matrix>(dict_->nlabels(), args_->dim);
+    output_state_ = std::make_shared<Matrix>(dict_->nlabels(), args_->dim);
+    output_counter_ = std::make_shared<std::vector<std::atomic_int64_t>>(dict_->nlabels());
   } else {
     output_ = std::make_shared<Matrix>(dict_->nwords(), args_->dim);
+    output_state_ = std::make_shared<Matrix>(dict_->nwords(), args_->dim);
+    output_counter_ = std::make_shared<std::vector<std::atomic_int64_t>>(dict_->nwords());
   }
   output_->zero();
+  output_state_->zero();
   startThreads();
-  model_ = std::make_shared<Model>(input_, output_, args_, 0);
+  model_ = std::make_shared<Model>(input_, output_, input_state_, output_state_,
+                                   args_, input_counter_, output_counter_,
+                                   &global_counter_, 0);
   if (args_->model == model_name::sup) {
     model_->setTargetCounts(dict_->getCounts(entry_type::label));
   } else {

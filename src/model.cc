@@ -9,6 +9,8 @@
 
 #include "model.h"
 
+#include <fenv.h>
+#include <cfenv>
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
@@ -23,7 +25,12 @@ constexpr int64_t LOG_TABLE_SIZE = 512;
 Model::Model(
     std::shared_ptr<Matrix> wi,
     std::shared_ptr<Matrix> wo,
+    std::shared_ptr<Matrix> wi_state,
+    std::shared_ptr<Matrix> wo_state,
     std::shared_ptr<Args> args,
+    std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter,
+    std::shared_ptr<std::vector<std::atomic_int64_t>> wo_counter,
+    std::atomic_int64_t * global_counter,
     int32_t seed)
     : hidden_(args->dim),
       output_(wo->size(0)),
@@ -31,17 +38,24 @@ Model::Model(
       rng(seed),
       quant_(false) {
   wi_ = wi;
+  wi_state_ = wi_state;
+  wi_counter_ = wi_counter;
+  global_counter_ = global_counter;
   wo_ = wo;
+  wo_state_ = wo_state;
+  wo_counter_ = wo_counter;
   args_ = args;
   osz_ = wo->size(0);
   hsz_ = args->dim;
   negpos = 0;
   loss_ = 0.0;
+  decay_ = args->decay;
   nexamples_ = 1;
   t_sigmoid_.reserve(SIGMOID_TABLE_SIZE + 1);
   t_log_.reserve(LOG_TABLE_SIZE + 1);
   initSigmoid();
   initLog();
+  feenableexcept(FE_UNDERFLOW | FE_OVERFLOW | FE_DIVBYZERO | FE_INVALID);
 }
 
 void Model::setQuantizePointer(std::shared_ptr<QMatrix> qwi,
@@ -57,7 +71,9 @@ real Model::binaryLogistic(int32_t target, bool label, real lr) {
   real score = sigmoid(wo_->dotRow(hidden_, target));
   real alpha = lr * (real(label) - score);
   grad_.addRow(*wo_, target, alpha);
-  wo_->addRow(hidden_, target, alpha);
+  // RMSProp update
+  wo_state_->addSquareRowDecay(hidden_, target, decay_);
+  wo_->addSqrtRow(hidden_, target, *wo_state_, alpha);
   if (label) {
     return -log(score);
   } else {
@@ -221,7 +237,7 @@ void Model::dfs(int32_t k, real threshold, int32_t node, real score,
   dfs(k, threshold, tree[node].right, score + std_log(f), heap, hidden);
 }
 
-void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
+  void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
   assert(target >= 0);
   assert(target < osz_);
   if (input.size() == 0) return;
@@ -238,12 +254,16 @@ void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
   if (args_->model == model_name::sup) {
     grad_.mul(1.0 / input.size());
   }
+
   for (auto it = input.cbegin(); it != input.cend(); ++it) {
-    wi_->addRow(grad_, *it, 1.0);
+    // RMSProp update
+    wi_state_->addSquareRowDecay(grad_, *it, decay_);
+    wi_->addSqrtRow(grad_, *it, *wi_state_, 1.0);
   }
+  (*global_counter_)++;
 }
 
-void Model::setTargetCounts(const std::vector<int64_t>& counts) {
+void Model::setTargetCounts(const std::vector<int64_t> &counts) {
   assert(counts.size() == osz_);
   if (args_->loss == loss_name::ns) {
     initTableNegatives(counts);
