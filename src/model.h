@@ -33,7 +33,9 @@ struct Node {
 class Model {
   protected:
     std::shared_ptr<Matrix> wi_;
+    std::shared_ptr<Matrix> wi_state_;
     std::shared_ptr<Matrix> wo_;
+    std::shared_ptr<Matrix> wo_state_;
     std::shared_ptr<QMatrix> qwi_;
     std::shared_ptr<QMatrix> qwo_;
     std::shared_ptr<Args> args_;
@@ -43,6 +45,7 @@ class Model {
     int32_t hsz_;
     int32_t osz_;
     real loss_;
+    real eps_;
     int64_t nexamples_;
     std::vector<real> t_sigmoid_;
     std::vector<real> t_log_;
@@ -65,6 +68,7 @@ class Model {
 
   public:
     Model(std::shared_ptr<Matrix>, std::shared_ptr<Matrix>,
+          std::shared_ptr<Matrix>, std::shared_ptr<Matrix>,
           std::shared_ptr<Args>, int32_t);
 
     real binaryLogistic(int32_t, bool, real);

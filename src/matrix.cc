@@ -57,6 +57,27 @@ void Matrix::addRow(const Vector& vec, int64_t i, real a) {
   }
 }
 
+void Matrix::addSqrtRow(const Vector &vec, int64_t i,
+                        const Matrix &normalization, real a, real eps) {
+  assert(i >= 0);
+  assert(i < m_);
+  assert(vec.size() == n_);
+  assert(normalization.size(0) == size(0));
+  assert(normalization.size(1) == size(1));
+  for (int64_t j = 0; j < n_; j++) {
+    data_[i * n_ + j] += a / (eps + std::sqrt(normalization.at(i, j))) * vec[j];
+  }
+}
+
+void Matrix::addSquareRow(const Vector &vec, int64_t i) {
+  assert(i >= 0);
+  assert(i < m_);
+  assert(vec.size() == n_);
+  for (int64_t j = 0; j < n_; j++) {
+    data_[i * n_ + j] += vec[j] * vec[j];
+  }
+}
+
 void Matrix::multiplyRow(const Vector& nums, int64_t ib, int64_t ie) {
   if (ie == -1) {
     ie = m_;

@@ -23,6 +23,8 @@ constexpr int64_t LOG_TABLE_SIZE = 512;
 Model::Model(
     std::shared_ptr<Matrix> wi,
     std::shared_ptr<Matrix> wo,
+    std::shared_ptr<Matrix> wi_state,
+    std::shared_ptr<Matrix> wo_state,
     std::shared_ptr<Args> args,
     int32_t seed)
     : hidden_(args->dim),
@@ -31,12 +33,15 @@ Model::Model(
       rng(seed),
       quant_(false) {
   wi_ = wi;
+  wi_state_ = wi_state;
   wo_ = wo;
+  wo_state_ = wo_state;
   args_ = args;
   osz_ = wo->size(0);
   hsz_ = args->dim;
   negpos = 0;
   loss_ = 0.0;
+  eps_ = args->eps;
   nexamples_ = 1;
   t_sigmoid_.reserve(SIGMOID_TABLE_SIZE + 1);
   t_log_.reserve(LOG_TABLE_SIZE + 1);
@@ -57,7 +62,9 @@ real Model::binaryLogistic(int32_t target, bool label, real lr) {
   real score = sigmoid(wo_->dotRow(hidden_, target));
   real alpha = lr * (real(label) - score);
   grad_.addRow(*wo_, target, alpha);
-  wo_->addRow(hidden_, target, alpha);
+  // Adagrad update
+  wo_state_->addSquareRow(hidden_, target);
+  wo_->addSqrtRow(hidden_, target, *wo_state_, alpha, eps_);
   if (label) {
     return -log(score);
   } else {
@@ -119,7 +126,9 @@ real Model::softmax(int32_t target, real lr) {
     real label = (i == target) ? 1.0 : 0.0;
     real alpha = lr * (label - output_[i]);
     grad_.addRow(*wo_, i, alpha);
-    wo_->addRow(hidden_, i, alpha);
+    // Adagrad update
+    wo_state_->addSquareRow(hidden_, i);
+    wo_->addSqrtRow(hidden_, i, *wo_state_, alpha, eps_);
   }
   return -log(output_[target]);
 }
@@ -239,7 +248,9 @@ void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
     grad_.mul(1.0 / input.size());
   }
   for (auto it = input.cbegin(); it != input.cend(); ++it) {
-    wi_->addRow(grad_, *it, 1.0);
+    // Adagrad update
+    wi_state_->addSquareRow(grad_, *it);
+    wi_->addSqrtRow(grad_, *it, *wi_state_, 1.0);
   }
 }
 

@@ -227,7 +227,8 @@ void FastText::loadModel(std::istream& in) {
     output_->load(in);
   }
 
-  model_ = std::make_shared<Model>(input_, output_, args_, 0);
+  model_ = std::make_shared<Model>(input_, output_, input_state_, output_state_,
+                                   args_, 0);
   model_->quant_ = quant_;
   model_->setQuantizePointer(qinput_, qoutput_, args_->qout);
 
@@ -241,7 +242,8 @@ void FastText::loadModel(std::istream& in) {
 void FastText::printInfo(real progress, real loss, std::ostream& log_stream) {
   std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
   double t = std::chrono::duration_cast<std::chrono::duration<double>> (end - start_).count();
-  double lr = args_->lr * (1.0 - progress);
+  double lr = args_->lr;  // No manual lr schedule for Adagrad
+
   double wst = 0;
 
   int64_t eta = 2592000; // Default to one month in seconds (720 * 3600)
@@ -315,7 +317,8 @@ void FastText::quantize(const Args qargs) {
   }
 
   quant_ = true;
-  model_ = std::make_shared<Model>(input_, output_, args_, 0);
+  model_ = std::make_shared<Model>(input_, output_, input_state_, output_state_,
+                                   args_, 0);
   model_->quant_ = quant_;
   model_->setQuantizePointer(qinput_, qoutput_, args_->qout);
   if (args_->model == model_name::sup) {
@@ -572,7 +575,7 @@ void FastText::trainThread(int32_t threadId) {
   std::ifstream ifs(args_->input);
   utils::seek(ifs, threadId * utils::size(ifs) / args_->thread);
 
-  Model model(input_, output_, args_, threadId);
+  Model model(input_, output_, input_state_, output_state_, args_, threadId);
   if (args_->model == model_name::sup) {
     model.setTargetCounts(dict_->getCounts(entry_type::label));
   } else {
@@ -668,15 +671,21 @@ void FastText::train(const Args args) {
     input_ = std::make_shared<Matrix>(dict_->nwords()+args_->bucket, args_->dim);
     input_->uniform(1.0 / args_->dim);
   }
+  input_state_ = std::make_shared<Matrix>(dict_->nwords()+args_->bucket, args_->dim);
+  input_state_->zero();
 
   if (args_->model == model_name::sup) {
     output_ = std::make_shared<Matrix>(dict_->nlabels(), args_->dim);
+    output_state_ = std::make_shared<Matrix>(dict_->nlabels(), args_->dim);
   } else {
     output_ = std::make_shared<Matrix>(dict_->nwords(), args_->dim);
+    output_state_ = std::make_shared<Matrix>(dict_->nwords(), args_->dim);
   }
   output_->zero();
+  output_state_->zero();
   startThreads();
-  model_ = std::make_shared<Model>(input_, output_, args_, 0);
+  model_ = std::make_shared<Model>(input_, output_, input_state_, output_state_,
+                                   args_, 0);
   if (args_->model == model_name::sup) {
     model_->setTargetCounts(dict_->getCounts(entry_type::label));
   } else {
