@@ -9,6 +9,7 @@
 
 #include "matrix.h"
 
+#include <fenv.h>
 #include <random>
 #include <exception>
 #include <stdexcept>
@@ -69,15 +70,17 @@ void Matrix::addSqrtRow(const Vector &vec, int64_t i,
   }
 }
 
-void Matrix::addSquareRowDecay(const Vector &vec, int64_t i, real decay) {
+void Matrix::addSquareRowDecay(const Vector &vec, int64_t i, real decay, int64_t delay) {
   assert(i >= 0);
   assert(i < m_);
   assert(vec.size() == n_);
   assert(decay >= 0);
   assert(decay < 1);
+  assert(delay >= 0);  // delay may be 0 if parameter is seen multiple times in a single update
+  real eager_decay = std::pow(decay, delay);
   for (int64_t j = 0; j < n_; j++) {
     data_[i * n_ + j] =
-        decay * data_[i * n_ + j] + (1 - decay) * (vec[j] * vec[j]);
+        eager_decay * data_[i * n_ + j] + (1 - decay) * (vec[j] * vec[j]);
   }
 }
 

@@ -64,7 +64,7 @@ class Matrix {
   void uniform(real);
   real dotRow(const Vector&, int64_t) const;
   void addRow(const Vector&, int64_t, real);
-  void addSquareRowDecay(const Vector&, int64_t, real);
+  void addSquareRowDecay(const Vector &, int64_t, real, int64_t delay = 1);
   void addSqrtRow(const Vector &, int64_t i, const Matrix &, real,
                   real eps = 1e-6);
 

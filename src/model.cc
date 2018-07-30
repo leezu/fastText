@@ -9,8 +9,6 @@
 
 #include "model.h"
 
-#include <fenv.h>
-#include <cfenv>
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
@@ -56,7 +54,6 @@ Model::Model(
   t_log_.reserve(LOG_TABLE_SIZE + 1);
   initSigmoid();
   initLog();
-  feenableexcept(FE_UNDERFLOW | FE_OVERFLOW | FE_DIVBYZERO | FE_INVALID);
 }
 
 void Model::setQuantizePointer(std::shared_ptr<QMatrix> qwi,
@@ -73,8 +70,10 @@ real Model::binaryLogistic(int32_t target, bool label, real lr) {
   real alpha = lr * (real(label) - score);
   grad_.addRow(*wo_, target, alpha);
   // RMSProp update
-  wo_state_->addSquareRowDecay(hidden_, target, decay_);
+  int64_t delay = std::max((int64_t) 1, *global_counter_ - (*wo_counter_)[target]);
+  wo_state_->addSquareRowDecay(hidden_, target, decay_, delay);
   wo_->addSqrtRow(hidden_, target, *wo_state_, alpha, eps_);
+  (*wo_counter_)[target].store(*global_counter_);
   if (label) {
     return -log(score);
   } else {
@@ -258,8 +257,10 @@ void Model::dfs(int32_t k, real threshold, int32_t node, real score,
 
   for (auto it = input.cbegin(); it != input.cend(); ++it) {
     // RMSProp update
-    wi_state_->addSquareRowDecay(grad_, *it, decay_);
+    int64_t delay = std::max((int64_t) 1, *global_counter_ - (*wi_counter_)[*it]);
+    wi_state_->addSquareRowDecay(grad_, *it, decay_, delay);
     wi_->addSqrtRow(grad_, *it, *wi_state_, 1.0, eps_);
+    (*wi_counter_)[*it].store(*global_counter_);
   }
   (*global_counter_)++;
 }

@@ -41,7 +41,7 @@ class FastText {
   std::shared_ptr<Matrix> output_state_;
   std::shared_ptr<std::vector<std::atomic_int64_t>> input_counter_;
   std::shared_ptr<std::vector<std::atomic_int64_t>> output_counter_;
-  std::atomic_int64_t global_counter_ {0};
+  std::atomic_int64_t global_counter_ {1};
 
   std::shared_ptr<QMatrix> qinput_;
   std::shared_ptr<QMatrix> qoutput_;
