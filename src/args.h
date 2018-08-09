@@ -36,6 +36,7 @@ class Args {
     int epoch;
     int minCount;
     int minCountLabel;
+    int maxNumWords;
     int neg;
     int wordNgrams;
     loss_name loss;

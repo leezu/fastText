@@ -23,6 +23,7 @@ Args::Args() {
   epoch = 5;
   minCount = 5;
   minCountLabel = 0;
+  maxNumWords = -1;
   neg = 5;
   wordNgrams = 1;
   loss = loss_name::ns;
@@ -118,6 +119,8 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         minCount = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-minCountLabel") {
         minCountLabel = std::stoi(args.at(ai + 1));
+      } else if (args[ai] == "-maxNumWords") {
+        maxNumWords = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-neg") {
         neg = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-wordNgrams") {
@@ -209,6 +212,7 @@ void Args::printDictionaryHelp() {
     << "\nThe following arguments for the dictionary are optional:\n"
     << "  -minCount           minimal number of word occurences [" << minCount << "]\n"
     << "  -minCountLabel      minimal number of label occurences [" << minCountLabel << "]\n"
+    << "  -maxNumWords      maximum number of words to learn word level vectors for [" << maxNumWords << "]\n"
     << "  -wordNgrams         max length of word ngram [" << wordNgrams << "]\n"
     << "  -bucket             number of buckets [" << bucket << "]\n"
     << "  -minn               min length of char ngram [" << minn << "]\n"
