@@ -253,6 +253,11 @@ void Dictionary::threshold(int64_t t, int64_t tl) {
         return (e.type == entry_type::word && e.count < t) ||
                (e.type == entry_type::label && e.count < tl);
       }), words_.end());
+  if (args_->maxNumWords >= 0) {
+    while (words_.size() > args_->maxNumWords) {
+      words_.pop_back();
+    }
+  }
   words_.shrink_to_fit();
   size_ = 0;
   nwords_ = 0;
