@@ -49,6 +49,7 @@ class Args {
     std::string label;
     int verbose;
     std::string pretrainedVectors;
+    bool noSave;
     bool saveOutput;
 
     bool qout;
