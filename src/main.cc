@@ -298,10 +298,12 @@ void train(const std::vector<std::string> args) {
   }
   ofs.close();
   fasttext.train(a);
-  fasttext.saveModel();
-  fasttext.saveVectors();
-  if (a.saveOutput) {
-    fasttext.saveOutput();
+  if (!a.noSave) {
+    fasttext.saveModel();
+    fasttext.saveVectors();
+    if (a.saveOutput) {
+      fasttext.saveOutput();
+    }
   }
 }
 
