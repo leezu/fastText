@@ -7,7 +7,11 @@
 # of patent rights can be found in the PATENTS file in the same directory.
 #
 
-CXX = c++
+ifeq (, $(shell which g++-8))
+  CXX = c++
+else
+  CXX = g++-8
+endif
 CXXFLAGS = -pthread -std=c++0x -march=native
 OBJS = args.o dictionary.o productquantizer.o matrix.o qmatrix.o vector.o model.o utils.o fasttext.o
 INCLUDES = -I.
