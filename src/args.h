@@ -30,6 +30,8 @@ class Args {
     std::string input;
     std::string output;
     double lr;
+    bool adagrad;
+    double eps;
     double word_l2;
     double ngram_l2;
     int nonzero_words;

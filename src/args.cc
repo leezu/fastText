@@ -18,6 +18,8 @@ namespace fasttext {
 
 Args::Args() {
   lr = 0.05;
+  eps = 1;
+  adagrad = false;
   word_l2 = 0;
   ngram_l2 = 0;
   nonzero_words = -1;
@@ -114,6 +116,11 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         output = std::string(args.at(ai + 1));
       } else if (args[ai] == "-lr") {
         lr = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-eps") {
+        eps = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-adagrad") {
+        adagrad = true;
+        ai--;
       } else if (args[ai] == "-word-l2") {
         word_l2 = std::stof(args.at(ai + 1));
       } else if (args[ai] == "-ngram-l2") {
@@ -254,6 +261,8 @@ void Args::printTrainingHelp() {
   std::cerr
     << "\nThe following arguments for training are optional:\n"
     << "  -lr                 learning rate [" << lr << "]\n"
+    << "  -eps                initial AdaGrad state. Only used if AdaGrad is enabled [" << eps << "]\n"
+    << "  -adagrad            use AdaGrad [" << adagrad << "]\n"
     << "  -lrUpdateRate       change the rate of updates for the learning rate [" << lrUpdateRate << "]\n"
     << "  -word-l2            L2 penalty applied to word vetcors [" << word_l2 << "]\n"
     << "  -ngram-l2           L2 penalty applied to ngram vectors [" << ngram_l2 << "]\n"

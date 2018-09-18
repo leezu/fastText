@@ -35,7 +35,8 @@ class Model {
   protected:
     std::shared_ptr<Matrix> wi_;
     std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter_;
-    std::shared_ptr<std::vector<real>> wi_lambda_;
+    std::shared_ptr<std::vector<real>> wi_state_;
+    std::shared_ptr<std::vector<real>> wo_state_;
     // std::atomic_int_fast8_t instead of bool for fast atomic operations
     std::atomic_int64_t *global_counter_;
     int64_t local_counter_;
@@ -75,6 +76,7 @@ class Model {
     Model(std::shared_ptr<Matrix>, std::shared_ptr<Matrix>,
           std::shared_ptr<Args>,
           std::shared_ptr<std::vector<std::atomic_int64_t>>,
+          std::shared_ptr<std::vector<real>>,
           std::shared_ptr<std::vector<real>>,
           std::atomic_int64_t *,
           int32_t, int32_t);

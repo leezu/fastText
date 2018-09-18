@@ -26,14 +26,16 @@ Model::Model(
     std::shared_ptr<Matrix> wi, std::shared_ptr<Matrix> wo,
     std::shared_ptr<Args> args,
     std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter,
-    std::shared_ptr<std::vector<real>> wi_lambda,
+    std::shared_ptr<std::vector<real>> wi_state,
+    std::shared_ptr<std::vector<real>> wo_state,
     std::atomic_int64_t *global_counter,
     int32_t nwords, int32_t seed)
     : hidden_(args->dim), output_(wo->size(0)), grad_(args->dim),
       tmp_(args->dim), rng(seed), quant_(false) {
   wi_ = wi;
   wi_counter_ = wi_counter;
-  wi_lambda_ = wi_lambda;
+  wi_state_ = wi_state;
+  wo_state_ = wo_state;
   global_counter_ = global_counter;
   nwords_ = nwords;
   wo_ = wo;
@@ -64,8 +66,27 @@ void Model::setQuantizePointer(std::shared_ptr<QMatrix> qwi,
 
 real Model::binaryLogistic(int32_t target, bool label, real lr) {
   real score = sigmoid(wo_->dotRow(hidden_, target));
-  real alpha = lr * (real(label) - score);
+  real alpha = (real(label) - score);
+
+  // lr for grad_ will be calculated in proximalUpdate for AdaGrad
+  if (!args_->adagrad) {
+    alpha *= lr;
+  }
   grad_.addRow(*wo_, target, alpha);
+
+  // lr for wo_[target] must be calculated here
+  if (args_->adagrad) {
+    // 1. Update state
+    (*wo_state_)[target] +=
+        std::inner_product(&(wo_->data()[target * wo_->cols()]),
+                           &(wo_->data()[target * wo_->cols() + wo_->cols()]),
+                           &(wo_->data()[target * wo_->cols()]), 0.0) /
+        wo_->cols();
+
+    // 2. Adapt alpha based on AdaGrad lr
+    alpha *= lr / std::sqrt(args_->eps + (*wo_state_)[target]);
+  }
+
   wo_->addRow(hidden_, target, alpha);
   if (label) {
     return -log(score);
@@ -126,7 +147,13 @@ real Model::softmax(int32_t target, real lr) {
   computeOutputSoftmax();
   for (int32_t i = 0; i < osz_; i++) {
     real label = (i == target) ? 1.0 : 0.0;
-    real alpha = lr * (label - output_[i]);
+    real alpha;
+    if (!args_->adagrad) {
+      alpha = lr * (label - output_[i]);
+    } else {
+      alpha = (label - output_[i]);
+    }
+
     grad_.addRow(*wo_, i, alpha);
     wo_->addRow(hidden_, i, alpha);
   }
@@ -159,12 +186,12 @@ void Model::forceEagerUpdate(const std::vector<int32_t> &input, const real &lr,
   }
 }
 
-real Model::forceEagerUpdate(const int32_t &it, const real &lr, const real &l2,
+real Model::forceEagerUpdate(const int32_t &it, const real &lr_, const real &l2,
                              const int64_t &counter) {
   assert(l2 > 0);
+  real lr = lr_;
 
   int64_t counter_wi = (*wi_counter_)[it].load();
-  real lambda_wi = (*wi_lambda_)[it];
   int64_t delay = counter - counter_wi - 1;
 
   // Only update stale parameters
@@ -173,23 +200,20 @@ real Model::forceEagerUpdate(const int32_t &it, const real &lr, const real &l2,
     auto norm = tmp_.norm();
 
     if (norm > 0) {
+      if (args_->adagrad) {
+        lr = lr / std::sqrt(args_->eps + (*wi_state_)[it]);
+      }
+
       real scale{1};
-      if (lambda_wi == lr * l2) {
-        // This may FE_OVERFLOW
-        scale = std::max(real(0), 1 - lr * l2 / norm);
-        if (scale > 0) {
-          scale = std::pow(scale, real(delay));
-        }
-      } else {
-        for (int i{0}; i < delay; i++) {
-          // This may FE_OVERFLOW
-          scale *= std::max(real(0), 1 - lr * l2 / norm);
-        }
+      // Assume lr was constant. Only true when running with AdaGrad
+      // This may FE_OVERFLOW
+      scale = std::max(real(0), 1 - lr * l2 / norm);
+      if (scale > 0) {
+        scale = std::pow(scale, real(delay));
       }
 
       // 1. Update counters
       (*wi_counter_)[it].store(counter);
-      (*wi_lambda_)[it] = lr * l2;
 
       // 2. Update parameters
       wi_->setRow(tmp_, it, scale);
@@ -320,11 +344,22 @@ void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
   }
 }
 
-void Model::proximalUpdate(const int32_t &it, const real &lr, const real &l2) {
+void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
+  real lr = lr_;
   // Only update stale parameters
   if ((*wi_counter_)[it].load() <= local_counter_) {
     (*wi_counter_)[it].store(local_counter_);
-    (*wi_lambda_)[it] = lr * l2;
+    if (args_->adagrad) {
+      // 1. Update state
+      (*wi_state_)[it] +=
+          std::inner_product(grad_.data(), grad_.data() + grad_.size(),
+                             grad_.data(), 0.0) /
+          grad_.size();
+
+      // 2. Rescale gradient by new lr
+      lr = lr / std::sqrt(args_->eps + (*wi_state_)[it]);
+      grad_.mul(lr);
+    }
 
     // 1. Copy parameter and add gradient
     wi_->copyRow(tmp_, it, grad_);

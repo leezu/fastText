@@ -228,9 +228,9 @@ void FastText::loadModel(std::istream& in) {
     output_->load(in);
   }
 
-  model_ = std::make_shared<Model>(input_, output_, args_, input_counter_,
-                                   input_lambda_, &global_counter_,
-                                   dict_->nwords(), 0);
+  model_ =
+      std::make_shared<Model>(input_, output_, args_, wi_counter_, wi_state_,
+                              wo_state_, &global_counter_, dict_->nwords(), 0);
   model_->quant_ = quant_;
   model_->setQuantizePointer(qinput_, qoutput_, args_->qout);
 
@@ -244,7 +244,12 @@ void FastText::loadModel(std::istream& in) {
 void FastText::printInfo(real progress, real loss, std::ostream& log_stream) {
   std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
   double t = std::chrono::duration_cast<std::chrono::duration<double>> (end - start_).count();
-  double lr = args_->lr * (1.0 - progress);
+  double lr;
+  if (args_->adagrad) {
+    lr = args_->lr;
+  } else {
+    lr = args_->lr * (1.0 - progress);
+  }
   double wst = 0;
 
   int64_t eta = 2592000; // Default to one month in seconds (720 * 3600)
@@ -321,9 +326,9 @@ void FastText::quantize(const Args qargs) {
   }
 
   quant_ = true;
-  model_ = std::make_shared<Model>(input_, output_, args_, input_counter_,
-                                   input_lambda_, &global_counter_,
-                                   dict_->nwords(), 0);
+  model_ =
+      std::make_shared<Model>(input_, output_, args_, wi_counter_, wi_state_,
+                              wo_state_, &global_counter_, dict_->nwords(), 0);
   model_->quant_ = quant_;
   model_->setQuantizePointer(qinput_, qoutput_, args_->qout);
   if (args_->model == model_name::sup) {
@@ -577,7 +582,7 @@ void FastText::analogies(int32_t k) {
 }
 
 void FastText::eagerUpdateThread(int32_t threadId) {
-  Model model(input_, output_, args_, input_counter_, input_lambda_,
+  Model model(input_, output_, args_, wi_counter_, wi_state_, wo_state_,
               &global_counter_, dict_->nwords(), threadId);
   const int64_t ntokens = dict_->ntokens();
 
@@ -608,7 +613,12 @@ void FastText::eagerUpdateThread(int32_t threadId) {
     }
 
     real progress = real(tokenCount_) / (args_->epoch * ntokens);
-    real lr = args_->lr * (1.0 - progress);
+    double lr;
+    if (args_->adagrad) {
+      lr = args_->lr;
+    } else {
+      lr = args_->lr * (1.0 - progress);
+    }
 
     real norm;
     bool isWord = i < dict_->nwords();
@@ -643,7 +653,7 @@ void FastText::trainThread(int32_t threadId) {
   std::ifstream ifs(args_->input);
   utils::seek(ifs, threadId * utils::size(ifs) / args_->thread);
 
-  Model model(input_, output_, args_, input_counter_, input_lambda_,
+  Model model(input_, output_, args_, wi_counter_, wi_state_, wo_state_,
               &global_counter_, dict_->nwords(), threadId);
   if (args_->model == model_name::sup) {
     model.setTargetCounts(dict_->getCounts(entry_type::label));
@@ -656,7 +666,12 @@ void FastText::trainThread(int32_t threadId) {
   std::vector<int32_t> line, labels;
   while (tokenCount_ < args_->epoch * ntokens) {
     real progress = real(tokenCount_) / (args_->epoch * ntokens);
-    real lr = args_->lr * (1.0 - progress);
+    double lr;
+    if (args_->adagrad) {
+      lr = args_->lr;
+    } else {
+      lr = args_->lr * (1.0 - progress);
+    }
     if (args_->model == model_name::sup) {
       localTokenCount += dict_->getLine(ifs, line, labels);
       supervised(model, lr, args_->word_l2, args_->ngram_l2, line, labels);
@@ -777,15 +792,13 @@ void FastText::train(const Args args) {
     std::exit(1);
   }
 
-  // Initialize input_lambda_
-  input_counter_ = std::make_shared<std::vector<std::atomic_int64_t>>(
+  // Initialize states
+  wi_counter_ = std::make_shared<std::vector<std::atomic_int64_t>>(
       dict_->nwords() + args_->bucket);
-  input_lambda_ =
+  wi_state_ =
       std::make_shared<std::vector<real>>(dict_->nwords() + args_->bucket);
-  std::fill(input_lambda_->begin(), input_lambda_->begin() + dict_->nwords(),
-            args_->lr * args_->word_l2);
-  std::fill(input_lambda_->begin() + dict_->nwords(), input_lambda_->end(),
-            args_->lr * args_->ngram_l2);
+  wo_state_ =
+      std::make_shared<std::vector<real>>(dict_->nwords() + args_->bucket);
 
   // Initialize regularization
   if (!args_->zeroinitwords) {
@@ -802,8 +815,8 @@ void FastText::train(const Args args) {
   }
   output_->zero();
   startThreads();
-  model_ = std::make_shared<Model>(input_, output_, args_, input_counter_,
-                                   input_lambda_, &global_counter_,
+  model_ = std::make_shared<Model>(input_, output_, args_, wi_counter_,
+                                   wi_state_, wo_state_, &global_counter_,
                                    dict_->nwords(), 0);
   if (args_->model == model_name::sup) {
     model_->setTargetCounts(dict_->getCounts(entry_type::label));
@@ -855,7 +868,7 @@ void FastText::startThreads() {
   }
 
   std::cout << "Update all parameters eagerly." << std::endl;
-  Model model(input_, output_, args_, input_counter_, input_lambda_,
+  Model model(input_, output_, args_, wi_counter_, wi_state_, wo_state_,
               &global_counter_, dict_->nwords(), 0);
   assert(input_->rows() == dict_->nwords() + args_->bucket);
   auto m = dict_->nwords() + args_->bucket;
