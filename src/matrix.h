@@ -64,15 +64,14 @@ class Matrix {
   void uniform(real);
   real dotRow(const Vector&, int64_t) const;
   void addRow(const Vector&, int64_t, real);
-  void setRow(const Vector &vec, int64_t i, real a = 1);
-  void copyRow(Vector &vec, int64_t i, real a = 1);
-  void copyRow(Vector &vec, int64_t i, Vector &a);
+  void addRescaleRow(const Vector&, int64_t, real);
 
   void multiplyRow(const real num, int64_t i);
   void multiplyRow(const Vector& nums, int64_t ib = 0, int64_t ie = -1);
   void divideRow(const Vector& denoms, int64_t ib = 0, int64_t ie = -1);
 
   real l2NormRow(int64_t i) const;
+  real l2NormRow(int64_t i, const Vector &) const;
   void l2NormRow(Vector& norms) const;
 
   void save(std::ostream&);

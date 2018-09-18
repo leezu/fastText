@@ -31,7 +31,7 @@ Model::Model(
     std::atomic_int64_t *global_counter,
     int32_t nwords, int32_t seed)
     : hidden_(args->dim), output_(wo->size(0)), grad_(args->dim),
-      tmp_(args->dim), rng(seed), quant_(false) {
+      rng(seed), quant_(false) {
   wi_ = wi;
   wi_counter_ = wi_counter;
   wi_state_ = wi_state;
@@ -192,38 +192,37 @@ real Model::forceEagerUpdate(const int32_t &it, const real &lr_, const real &l2,
   real lr = lr_;
 
   int64_t counter_wi = (*wi_counter_)[it].load();
-  int64_t delay = counter - counter_wi - 1;
+  int64_t delay = (counter - 1) - counter_wi;
 
   // Only update stale parameters
-  if (delay > 0) {
-    wi_->copyRow(tmp_, it); // Copy parameters to tmp_
-    auto norm = tmp_.norm();
+  if (delay <= 0) {
+    return -1; // Norm was not calculated
+  }
 
-    if (norm > 0) {
-      if (args_->adagrad) {
-        lr = lr / std::sqrt(args_->eps + (*wi_state_)[it]);
-      }
+  auto norm = wi_->l2NormRow(it);
 
-      real scale{1};
-      // Assume lr was constant. Only true when running with AdaGrad
-      // This may FE_OVERFLOW
-      scale = std::max(real(0), 1 - lr * l2 / norm);
-      if (scale > 0) {
-        scale = std::pow(scale, real(delay));
-      }
-
-      // 1. Update counters
-      (*wi_counter_)[it].store(counter);
-
-      // 2. Update parameters
-      wi_->setRow(tmp_, it, scale);
-
-      return norm * scale;
-    } else {
-      return 0;
+  if (norm > 0) {
+    if (args_->adagrad) {
+      lr = lr / std::sqrt(args_->eps + (*wi_state_)[it]);
     }
+
+    real scale{1};
+    // Assume lr was constant. Only true when running with AdaGrad
+    // This may FE_OVERFLOW
+    scale = std::max(real(0), 1 - lr * l2 / norm);
+    if (scale > 0) {
+      scale = std::pow(scale, real(delay));
+    }
+
+    // 1. Update counters
+    (*wi_counter_)[it].store(counter - 1);
+
+    // 2. Update parameters
+    wi_->multiplyRow(scale, it);
+
+    return norm * scale;
   } else {
-    return -1;  // Norm was not calculated
+    return 0;
   }
 }
 
@@ -346,34 +345,33 @@ void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
 
 void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
   real lr = lr_;
-  // Only update stale parameters
   if ((*wi_counter_)[it].load() <= local_counter_) {
     (*wi_counter_)[it].store(local_counter_);
-    if (args_->adagrad) {
-      // 1. Update state
-      (*wi_state_)[it] +=
-          std::inner_product(grad_.data(), grad_.data() + grad_.size(),
-                             grad_.data(), 0.0) /
-          grad_.size();
+  }
 
-      // 2. Rescale gradient by new lr
-      lr = lr / std::sqrt(args_->eps + (*wi_state_)[it]);
-      grad_.mul(lr);
-    }
+  if (args_->adagrad) {
+    // 1. Update state
+    (*wi_state_)[it] +=
+        std::inner_product(grad_.data(), grad_.data() + grad_.size(),
+                           grad_.data(), 0.0) /
+        grad_.size();
 
-    // 1. Copy parameter and add gradient
-    wi_->copyRow(tmp_, it, grad_);
-    auto norm = tmp_.norm();
+    // 2. Rescale gradient by new lr
+    lr = lr / std::sqrt(args_->eps + (*wi_state_)[it]);
+    grad_.mul(lr);
+  }
 
-    // 1. Write (possibly soft-thresheld) parameter
-    real scale;
-    if (l2 > 0 && norm > 0) {
-      real lambda = lr * l2;
+  real norm = wi_->l2NormRow(it, grad_);
+  if (l2 > 0) {
+    real lambda = lr * l2;
+    if (norm > 0) {
       real scale = std::max(real(0), 1 - lambda / norm);
-      wi_->setRow(tmp_, it, scale);
+      wi_->addRescaleRow(grad_, it, scale);
     } else {
-      wi_->setRow(tmp_, it);
+      wi_->multiplyRow(0, it);
     }
+  } else {
+    wi_->addRow(grad_, it, 1);
   }
 }
 
