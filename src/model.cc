@@ -48,7 +48,8 @@ Model::Model(
   initSigmoid();
   initLog();
 #ifndef __APPLE__
-  feenableexcept(FE_OVERFLOW | FE_DIVBYZERO | FE_INVALID);  // FE_UNDERFLOW is ok
+  // FE_OVERFLOW, FE_UNDERFLOW may reasonably occur
+  feenableexcept(FE_DIVBYZERO | FE_INVALID);
 #endif
 }
 
@@ -172,14 +173,19 @@ real Model::forceEagerUpdate(const int32_t &it, const real &lr, const real &l2,
     auto norm = tmp_.norm();
 
     if (norm > 0) {
-      // map a linear function based on last l2 * lr and current l2 * lr
-      real lambda;
+      real scale{1};
       if (lambda_wi == lr * l2) {
-        lambda = lambda_wi * delay;
+        // This may FE_OVERFLOW
+        scale = std::max(real(0), 1 - lr * l2 / norm);
+        if (scale > 0) {
+          scale = std::pow(scale, real(delay));
+        }
       } else {
-        lambda = lambda_wi * delay - 0.5 * delay * (lambda_wi - lr * l2);
+        for (int i{0}; i < delay; i++) {
+          // This may FE_OVERFLOW
+          scale *= std::max(real(0), 1 - lr * l2 / norm);
+        }
       }
-      real scale = std::max(real(0), 1 - lambda / norm);
 
       // 1. Update counters
       (*wi_counter_)[it].store(counter);

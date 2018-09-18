@@ -621,7 +621,6 @@ void FastText::eagerUpdateThread(int32_t threadId) {
     } else {
       norm = model.getNorm(i);
     }
-    // real norm = model.getNorm(i);
     if (norm > 0) {
       if (isWord) {
         num_nonzero_words++;
