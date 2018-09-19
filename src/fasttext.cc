@@ -799,6 +799,12 @@ void FastText::train(const Args args) {
       std::make_shared<std::vector<real>>(dict_->nwords() + args_->bucket);
   wo_state_ =
       std::make_shared<std::vector<real>>(dict_->nwords() + args_->bucket);
+  if (!args_->adagrad) {
+    std::fill(wi_state_->begin(), wi_state_->begin() + dict_->nwords(),
+              args_->lr * args_->word_l2);
+    std::fill(wi_state_->begin() + dict_->nwords(), wi_state_->end(),
+              args_->lr * args_->ngram_l2);
+  }
 
   // Initialize regularization
   if (!args_->zeroinitwords) {

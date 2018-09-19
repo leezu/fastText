@@ -207,15 +207,23 @@ real Model::forceEagerUpdate(const int32_t &it, const real &lr_, const real &l2,
     }
 
     real scale{1};
-    // Assume lr was constant. Only true when running with AdaGrad
+    real lambda = lr * l2;
+    if (!args_->adagrad) {
+      lambda = (lambda + (*wi_state_)[it]) / 2;
+    }
+
+    // Only exact when running with AdaGrad
     // This may FE_OVERFLOW
-    scale = std::max(real(0), 1 - lr * l2 / norm);
+    scale = std::max(real(0), 1 - lambda / norm);
     if (scale > 0) {
       scale = std::pow(scale, real(delay));
     }
 
     // 1. Update counters
     (*wi_counter_)[it].store(counter - 1);
+    if (!args_->adagrad) {
+      (*wi_state_)[it] = lr * l2;
+    }
 
     // 2. Update parameters
     wi_->multiplyRow(scale, it);
@@ -359,6 +367,8 @@ void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
     // 2. Rescale gradient by new lr
     lr = lr / std::sqrt(args_->eps + (*wi_state_)[it]);
     grad_.mul(lr);
+  } else {
+    (*wi_state_)[it] = lr * l2;
   }
 
   real norm = wi_->l2NormRow(it, grad_);
