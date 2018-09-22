@@ -48,6 +48,7 @@ class Model {
     Vector hidden_;
     Vector output_;
     Vector grad_;
+    Vector tmp_;
     int32_t hsz_;
     int32_t osz_;
     real loss_;
