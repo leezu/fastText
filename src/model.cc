@@ -9,6 +9,7 @@
 
 #include "model.h"
 
+#include "mkl_cblas.h"
 #include <fenv.h>
 #include <cfenv>
 #include <iostream>
@@ -78,9 +79,8 @@ real Model::binaryLogistic(int32_t target, bool label, real lr) {
   if (args_->adagrad) {
     // 1. Update state
     (*wo_state_)[target] +=
-        std::inner_product(&(wo_->data()[target * wo_->cols()]),
-                           &(wo_->data()[target * wo_->cols() + wo_->cols()]),
-                           &(wo_->data()[target * wo_->cols()]), 0.0) /
+        cblas_sdsdot(wo_->cols(), 0, &(wo_->data()[target * wo_->cols()]), 1,
+                     &(wo_->data()[target * wo_->cols()]), 1) /
         wo_->cols();
 
     // 2. Adapt alpha based on AdaGrad lr
@@ -360,8 +360,7 @@ void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
   if (args_->adagrad) {
     // 1. Update state
     (*wi_state_)[it] +=
-        std::inner_product(grad_.data(), grad_.data() + grad_.size(),
-                           grad_.data(), 0.0) /
+        cblas_sdsdot(grad_.size(), 0, grad_.data(), 1, grad_.data(), 1) /
         grad_.size();
 
     // 2. Rescale gradient by new lr
