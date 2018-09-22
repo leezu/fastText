@@ -9,6 +9,7 @@
 
 #include "model.h"
 
+#include "mkl_cblas.h"
 #include <fenv.h>
 #include <cfenv>
 #include <iostream>
@@ -31,7 +32,7 @@ Model::Model(
     std::atomic_int64_t *global_counter,
     int32_t nwords, int32_t seed)
     : hidden_(args->dim), output_(wo->size(0)), grad_(args->dim),
-      rng(seed), quant_(false) {
+      tmp_(args->dim), rng(seed), quant_(false) {
   wi_ = wi;
   wi_counter_ = wi_counter;
   wi_state_ = wi_state;
@@ -78,9 +79,8 @@ real Model::binaryLogistic(int32_t target, bool label, real lr) {
   if (args_->adagrad) {
     // 1. Update state
     (*wo_state_)[target] +=
-        std::inner_product(&(wo_->data()[target * wo_->cols()]),
-                           &(wo_->data()[target * wo_->cols() + wo_->cols()]),
-                           &(wo_->data()[target * wo_->cols()]), 0.0) /
+        cblas_sdsdot(wo_->cols(), 0, &(wo_->data()[target * wo_->cols()]), 1,
+                     &(wo_->data()[target * wo_->cols()]), 1) /
         wo_->cols();
 
     // 2. Adapt alpha based on AdaGrad lr
@@ -360,8 +360,7 @@ void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
   if (args_->adagrad) {
     // 1. Update state
     (*wi_state_)[it] +=
-        std::inner_product(grad_.data(), grad_.data() + grad_.size(),
-                           grad_.data(), 0.0) /
+        cblas_sdsdot(grad_.size(), 0, grad_.data(), 1, grad_.data(), 1) /
         grad_.size();
 
     // 2. Rescale gradient by new lr
@@ -371,7 +370,10 @@ void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
     (*wi_state_)[it] = lr * l2;
   }
 
-  real norm = wi_->l2NormRow(it, grad_);
+  for (int i{0}; i < grad_.size(); i++) {
+    tmp_[i] = wi_->at(it, i) + grad_[i];
+  }
+  real norm = tmp_.norm();
   if (l2 > 0) {
     real lambda = lr * l2;
     if (norm > 0) {
