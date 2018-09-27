@@ -22,6 +22,11 @@ namespace fasttext {
 constexpr int64_t SIGMOID_TABLE_SIZE = 512;
 constexpr int64_t MAX_SIGMOID = 8;
 constexpr int64_t LOG_TABLE_SIZE = 512;
+#ifdef SEQ_CST
+constexpr std::memory_order MEMORY_ORDER = std::memory_order_seq_cst;
+#else
+constexpr std::memory_order MEMORY_ORDER = std::memory_order_relaxed;
+#endif
 
 Model::Model(
     std::shared_ptr<Matrix> wi, std::shared_ptr<Matrix> wo,
@@ -29,7 +34,11 @@ Model::Model(
     std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter,
     std::shared_ptr<std::vector<real>> wi_state,
     std::shared_ptr<std::vector<real>> wo_state,
+#ifndef SSC
     std::atomic_int64_t *global_counter,
+#else
+    Counter *global_counter,
+#endif
     int32_t nwords, int32_t seed)
     : hidden_(args->dim), output_(wo->size(0)), grad_(args->dim),
       tmp_(args->dim), rng(seed), quant_(false) {
@@ -38,6 +47,10 @@ Model::Model(
   wi_state_ = wi_state;
   wo_state_ = wo_state;
   global_counter_ = global_counter;
+#ifdef SSC
+  xorshift32state = seed + 1;
+  assert(xorshift32state > 0);
+#endif
   nwords_ = nwords;
   wo_ = wo;
   args_ = args;
@@ -191,7 +204,7 @@ real Model::forceEagerUpdate(const int32_t &it, const real &lr_, const real &l2,
   assert(l2 > 0);
   real lr = lr_;
 
-  int64_t counter_wi = (*wi_counter_)[it].load();
+  int64_t counter_wi = (*wi_counter_)[it].load(MEMORY_ORDER);
   int64_t delay = (counter - 1) - counter_wi;
 
   // Only update stale parameters
@@ -325,7 +338,12 @@ void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
   if (input.size() == 0)
     return;
 
-  local_counter_ = (*global_counter_)++;
+#ifdef SSC
+  global_counter_->inc(global_counter_->xorshift32(&xorshift32state), MEMORY_ORDER);
+  local_counter_ = global_counter_->load();
+#else
+  local_counter_ = global_counter_->fetch_add(1, MEMORY_ORDER);
+#endif
   if (word_l2 > 0 || ngram_l2 > 0) {
     grad_.zero();
     forceEagerUpdate(input, lr, word_l2, ngram_l2, local_counter_);
@@ -353,8 +371,9 @@ void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
 
 void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
   real lr = lr_;
-  if ((*wi_counter_)[it].load() <= local_counter_) {
-    (*wi_counter_)[it].store(local_counter_);
+  // TODO memory order acq and rel
+  if ((*wi_counter_)[it].load(MEMORY_ORDER) <= local_counter_) {
+    (*wi_counter_)[it].store(local_counter_, MEMORY_ORDER);
   }
 
   if (args_->adagrad) {
