@@ -20,6 +20,7 @@
 #include <tuple>
 
 #include "args.h"
+#include "counter.h"
 #include "dictionary.h"
 #include "matrix.h"
 #include "model.h"
@@ -40,7 +41,11 @@ class FastText {
   std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter_;
   std::shared_ptr<std::vector<real>> wi_state_;
   std::shared_ptr<std::vector<real>> wo_state_;
-  std::atomic_int64_t global_counter_ {0};
+#ifndef SSC
+  std::atomic_int64_t global_counter_;
+#else
+  Counter global_counter_ {0.01};
+#endif
   std::atomic_int64_t num_nonzero_words_ {0};
   std::atomic_int64_t num_nonzero_ngrams_ {0};
   real norm_words_ {0};

@@ -16,6 +16,7 @@
 #include <memory>
 
 #include "args.h"
+#include "counter.h"
 #include "matrix.h"
 #include "vector.h"
 #include "qmatrix.h"
@@ -37,8 +38,12 @@ class Model {
     std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter_;
     std::shared_ptr<std::vector<real>> wi_state_;
     std::shared_ptr<std::vector<real>> wo_state_;
-    // std::atomic_int_fast8_t instead of bool for fast atomic operations
+#ifndef SSC
     std::atomic_int64_t *global_counter_;
+#else
+    Counter *global_counter_;
+#endif
+    uint32_t xorshift32state;
     int64_t local_counter_;
     std::int32_t nwords_;
     std::shared_ptr<Matrix> wo_;
@@ -78,7 +83,11 @@ class Model {
           std::shared_ptr<std::vector<std::atomic_int64_t>>,
           std::shared_ptr<std::vector<real>>,
           std::shared_ptr<std::vector<real>>,
-          std::atomic_int64_t *,
+#ifndef SSC
+          std::atomic_int64_t*,
+#else
+          Counter*,
+#endif
           int32_t, int32_t);
 
     real binaryLogistic(int32_t, bool, real);

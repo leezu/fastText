@@ -20,6 +20,15 @@ LDFLAGS = -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT
 opt: CXXFLAGS += -O3 -funroll-loops
 opt: fasttext
 
+SSC: CXXFLAGS += -O3 -funroll-loops -D SSC
+SSC: fasttext
+
+SEQ_CST_SSC: CXXFLAGS += -O3 -funroll-loops -D SSC -D SEQ_CST
+SEQ_CST_SSC: fasttext
+
+SEQ_CST: CXXFLAGS += -O3 -funroll-loops -D SEQ_CST
+SEQ_CST: fasttext
+
 debug: CXXFLAGS += -g -O0 -fno-inline
 debug: fasttext
 
@@ -41,7 +50,7 @@ qmatrix.o: src/qmatrix.cc src/qmatrix.h src/utils.h
 vector.o: src/vector.cc src/vector.h src/utils.h
 	$(CXX) $(CXXFLAGS) -c src/vector.cc
 
-model.o: src/model.cc src/model.h src/args.h
+model.o: src/model.cc src/model.h src/args.h src/counter.h
 	$(CXX) $(CXXFLAGS) -c src/model.cc
 
 utils.o: src/utils.cc src/utils.h

@@ -25,6 +25,11 @@ namespace fasttext {
 
 constexpr int32_t FASTTEXT_VERSION = 12; /* Version 1b */
 constexpr int32_t FASTTEXT_FILEFORMAT_MAGIC_INT32 = 793712314;
+#ifdef SEQ_CST
+  constexpr std::memory_order MEMORY_ORDER = std::memory_order_seq_cst;
+#else
+  constexpr std::memory_order MEMORY_ORDER = std::memory_order_relaxed;
+#endif
 
 FastText::FastText() : quant_(false) {}
 
@@ -624,7 +629,7 @@ void FastText::eagerUpdateThread(int32_t threadId) {
     bool isWord = i < dict_->nwords();
     auto l2 = isWord ? args_->word_l2 : args_->ngram_l2;
     if (l2) {
-      norm = model.forceEagerUpdate(i, lr, l2, global_counter_.load());
+      norm = model.forceEagerUpdate(i, lr, l2, global_counter_.load(MEMORY_ORDER));
       if (norm == -1) { // May return -1 if norm was not calculated
         norm = model.getNorm(i);
       }
@@ -892,8 +897,9 @@ void FastText::startThreads() {
     bool isWord = i < dict_->nwords();
     auto l2 = isWord ? args_->word_l2 : args_->ngram_l2;
     if (l2) {
-      norm = model.forceEagerUpdate(i, 0, l2, global_counter_.load());
-      if (norm == -1) {  // May return -1 if norm was not calculated
+      norm = model.forceEagerUpdate(
+          i, 0, l2, global_counter_.load(std::memory_order_seq_cst));
+      if (norm == -1) { // May return -1 if norm was not calculated
         norm = model.getNorm(i);
       }
     } else {
