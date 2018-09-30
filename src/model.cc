@@ -338,13 +338,14 @@ void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
   if (input.size() == 0)
     return;
 
-#ifdef SSC
-  global_counter_->inc(global_counter_->xorshift32(&xorshift32state), MEMORY_ORDER);
-  local_counter_ = global_counter_->load();
-#else
-  local_counter_ = global_counter_->fetch_add(1, MEMORY_ORDER);
-#endif
   if (word_l2 > 0 || ngram_l2 > 0) {
+#ifdef SSC
+    global_counter_->inc(global_counter_->xorshift32(&xorshift32state),
+                         MEMORY_ORDER);
+    local_counter_ = global_counter_->load();
+#else
+    local_counter_ = global_counter_->fetch_add(1, MEMORY_ORDER);
+#endif
     grad_.zero();
     forceEagerUpdate(input, lr, word_l2, ngram_l2, local_counter_);
   }
@@ -372,8 +373,10 @@ void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
 void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
   real lr = lr_;
   // TODO memory order acq and rel
-  if ((*wi_counter_)[it].load(MEMORY_ORDER) <= local_counter_) {
-    (*wi_counter_)[it].store(local_counter_, MEMORY_ORDER);
+  if (l2) {
+    if ((*wi_counter_)[it].load(MEMORY_ORDER) <= local_counter_) {
+      (*wi_counter_)[it].store(local_counter_, MEMORY_ORDER);
+    }
   }
 
   if (args_->adagrad) {
