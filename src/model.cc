@@ -8,6 +8,7 @@
  */
 
 #include "model.h"
+#include "aligned.h"
 
 #include "mkl_cblas.h"
 #include <fenv.h>
@@ -31,7 +32,7 @@ constexpr std::memory_order MEMORY_ORDER = std::memory_order_relaxed;
 Model::Model(
     std::shared_ptr<Matrix> wi, std::shared_ptr<Matrix> wo,
     std::shared_ptr<Args> args,
-    std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter,
+    std::shared_ptr<std::vector<overAlignedInt64>> wi_counter,
     std::shared_ptr<std::vector<real>> wi_state,
     std::shared_ptr<std::vector<real>> wo_state,
 #ifndef SSC
@@ -204,7 +205,7 @@ real Model::forceEagerUpdate(const int32_t &it, const real &lr_, const real &l2,
   assert(l2 > 0);
   real lr = lr_;
 
-  int64_t counter_wi = (*wi_counter_)[it].load(MEMORY_ORDER);
+  int64_t counter_wi = (*wi_counter_)[it].e.load(MEMORY_ORDER);
   int64_t delay = (counter - 1) - counter_wi;
 
   // Only update stale parameters
@@ -233,7 +234,7 @@ real Model::forceEagerUpdate(const int32_t &it, const real &lr_, const real &l2,
     }
 
     // 1. Update counters
-    (*wi_counter_)[it].store(counter - 1);
+    (*wi_counter_)[it].e.store(counter - 1);
     if (!args_->adagrad) {
       (*wi_state_)[it] = lr * l2;
     }
@@ -374,8 +375,8 @@ void Model::proximalUpdate(const int32_t &it, const real &lr_, const real &l2) {
   real lr = lr_;
   // TODO memory order acq and rel
   if (l2) {
-    if ((*wi_counter_)[it].load(MEMORY_ORDER) <= local_counter_) {
-      (*wi_counter_)[it].store(local_counter_, MEMORY_ORDER);
+    if ((*wi_counter_)[it].e.load(MEMORY_ORDER) <= local_counter_) {
+      (*wi_counter_)[it].e.store(local_counter_, MEMORY_ORDER);
     }
   }
 

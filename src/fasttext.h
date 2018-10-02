@@ -28,6 +28,7 @@
 #include "real.h"
 #include "utils.h"
 #include "vector.h"
+#include "aligned.h"
 
 namespace fasttext {
 
@@ -38,7 +39,7 @@ class FastText {
 
   std::shared_ptr<Matrix> input_;
   std::shared_ptr<Matrix> output_;
-  std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter_;
+  std::shared_ptr<std::vector<overAlignedInt64>> wi_counter_;
   std::shared_ptr<std::vector<real>> wi_state_;
   std::shared_ptr<std::vector<real>> wo_state_;
 #ifndef SSC

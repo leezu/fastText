@@ -21,6 +21,7 @@
 #include "vector.h"
 #include "qmatrix.h"
 #include "real.h"
+#include "aligned.h"
 
 namespace fasttext {
 
@@ -35,7 +36,7 @@ struct Node {
 class Model {
   protected:
     std::shared_ptr<Matrix> wi_;
-    std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter_;
+    std::shared_ptr<std::vector<overAlignedInt64>> wi_counter_;
     std::shared_ptr<std::vector<real>> wi_state_;
     std::shared_ptr<std::vector<real>> wo_state_;
 #ifndef SSC
@@ -80,7 +81,7 @@ class Model {
   public:
     Model(std::shared_ptr<Matrix>, std::shared_ptr<Matrix>,
           std::shared_ptr<Args>,
-          std::shared_ptr<std::vector<std::atomic_int64_t>>,
+          std::shared_ptr<std::vector<overAlignedInt64>>,
           std::shared_ptr<std::vector<real>>,
           std::shared_ptr<std::vector<real>>,
 #ifndef SSC

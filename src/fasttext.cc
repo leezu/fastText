@@ -8,6 +8,7 @@
  */
 
 #include "fasttext.h"
+#include "aligned.h"
 
 #include <atomic>
 #include <iostream>
@@ -798,7 +799,7 @@ void FastText::train(const Args args) {
   }
 
   // Initialize states
-  wi_counter_ = std::make_shared<std::vector<std::atomic_int64_t>>(
+  wi_counter_ = std::make_shared<std::vector<overAlignedInt64>>(
       dict_->nwords() + args_->bucket);
   wi_state_ =
       std::make_shared<std::vector<real>>(dict_->nwords() + args_->bucket);
