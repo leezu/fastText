@@ -103,14 +103,21 @@ void Matrix::divideRow(const Vector& denoms, int64_t ib, int64_t ie) {
 }
 
 real Matrix::l2NormRow(int64_t i) const {
-  auto norm = 0.0;
+  real ssq = 0;
+  real scale = 0;
   for (auto j = 0; j < n_; j++) {
-    norm += at(i, j) * at(i, j);
+    real atij = at(i, j);
+    if (atij != 0) {
+      auto abs = std::abs(atij);
+      if (scale < abs) {
+        ssq = 1 + ssq * (scale / abs) * (scale / abs);
+        scale = abs;
+      } else {
+        ssq = ssq + (abs / scale) * (abs / scale);
+      }
+    }
   }
-  if (std::isnan(norm)) {
-    throw std::runtime_error("Encountered NaN.");
-  }
-  return std::sqrt(norm);
+  return scale * std::sqrt(ssq);
 }
 
 void Matrix::l2NormRow(Vector& norms) const {
