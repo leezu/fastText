@@ -32,6 +32,7 @@ class Args {
     double lr;
     bool adagrad;
     double eps;
+    double nodelayed_l2;
     double word_l2;
     double ngram_l2;
     int nonzero_words;

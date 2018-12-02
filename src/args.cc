@@ -20,6 +20,7 @@ Args::Args() {
   lr = 0.05;
   eps = 1;
   adagrad = false;
+  nodelayed_l2 = false;
   word_l2 = 0;
   ngram_l2 = 0;
   nonzero_words = -1;
@@ -179,6 +180,9 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         verbose = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-pretrainedVectors") {
         pretrainedVectors = std::string(args.at(ai + 1));
+      } else if (args[ai] == "-nodelayed-l2") {
+        nodelayed_l2 = true;
+        ai--;
       } else if (args[ai] == "-fixwords") {
         fixwords = true;
         ai--;
