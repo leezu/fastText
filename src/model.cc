@@ -179,6 +179,11 @@ void Model::forceEagerUpdate(const std::vector<int32_t> &input, const real &lr,
                              const real &word_l2, const real &ngram_l2,
                              const int64_t &counter) {
   for (auto it = input.cbegin(); it != input.cend(); ++it) {
+    if ((*it < nwords_ && args_->fixwords) ||
+        (*it >= nwords_ && args_->fixngrams)) {
+      continue;
+    }
+
     auto l2 = (*it < nwords_) ? word_l2 : ngram_l2;
     if (l2) {
       forceEagerUpdate(*it, lr, l2, counter);
@@ -346,6 +351,11 @@ void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
   }
 
   for (auto it = input.cbegin(); it != input.cend(); ++it) {
+    if ((*it < nwords_ && args_->fixwords) ||
+        (*it >= nwords_ && args_->fixngrams)) {
+      continue;
+    }
+
     auto l2 = (*it < nwords_) ? word_l2 : ngram_l2;
     proximalUpdate(*it, lr, l2);
   }

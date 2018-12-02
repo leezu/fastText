@@ -58,6 +58,8 @@ class Args {
     std::string pretrainedVectors;
     bool noSave;
     bool saveOutput;
+    bool fixwords;
+    bool fixngrams;
     bool zeroinitwords;
     bool zeroinitngrams;
 

@@ -45,6 +45,8 @@ Args::Args() {
   pretrainedVectors = "";
   noSave = false;
   saveOutput = false;
+  fixwords = false;
+  fixngrams = false;
   zeroinitwords = false;
   zeroinitngrams = false;
 
@@ -177,6 +179,12 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         verbose = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-pretrainedVectors") {
         pretrainedVectors = std::string(args.at(ai + 1));
+      } else if (args[ai] == "-fixwords") {
+        fixwords = true;
+        ai--;
+      } else if (args[ai] == "-fixngrams") {
+        fixngrams = true;
+        ai--;
       } else if (args[ai] == "-zeroinitwords") {
         zeroinitwords = true;
         ai--;
