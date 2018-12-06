@@ -180,7 +180,7 @@ void FastText::saveModel(const std::string path) {
   ofs.close();
 }
 
-void FastText::loadModel(const std::string& filename) {
+void FastText::loadModel(const std::string& filename, const Args args) {
   std::ifstream ifs(filename, std::ifstream::binary);
   if (!ifs.is_open()) {
     throw std::invalid_argument(filename + " cannot be opened for loading!");
@@ -188,12 +188,12 @@ void FastText::loadModel(const std::string& filename) {
   if (!checkModel(ifs)) {
     throw std::invalid_argument(filename + " has wrong file format!");
   }
-  loadModel(ifs);
+  loadModel(ifs, args);
   ifs.close();
 }
 
-void FastText::loadModel(std::istream& in) {
-  args_ = std::make_shared<Args>();
+  void FastText::loadModel(std::istream& in, const Args args) {
+  args_ = std::make_shared<Args>(args);
   input_ = std::make_shared<Matrix>();
   output_ = std::make_shared<Matrix>();
   qinput_ = std::make_shared<QMatrix>();
@@ -733,43 +733,64 @@ void FastText::loadVectors(std::string filename) {
 }
 
 void FastText::train(const Args args) {
-  args_ = std::make_shared<Args>(args);
-  dict_ = std::make_shared<Dictionary>(args_);
-  if (args_->input == "-") {
-    // manage expectations
-    throw std::invalid_argument("Cannot use stdin for training!");
-  }
-  std::ifstream ifs(args_->input);
-  if (!ifs.is_open()) {
-    throw std::invalid_argument(
-        args_->input + " cannot be opened for training!");
-  }
-  dict_->readFromFile(ifs);
-  ifs.close();
-
-  if (args_->pretrainedVectors.size() != 0) {
-    std::cout << "Unsupported.";
-    std::exit(1);
-    loadVectors(args_->pretrainedVectors);
+  if (args.loadModel.size()) {
+    if (args.pretrainedVectors.size()) {
+      std::cout << "Unsupported." << std::endl;
+      std::exit(1);
+    }
+    std::cout << "Loading input and output matrices from " << args.loadModel
+              << std::endl;
+    loadModel(args.loadModel, args);
+    std::cout << "Loaded model of shape (" << input_->rows() << ", "
+              << input_->cols() << ")" << std::endl;
+    std::cout << "Overwriting args from .bin file." << std::endl;
+    args_->dump(std::cout);
   } else {
-    /* clang-format off */
-    input_ = std::make_shared<Matrix>(dict_->nwords() +
-                                      args_->bucket, args_->dim);
-    /* clang-format on */
-    input_->uniform(1.0 / args_->dim);
+    args_ = std::make_shared<Args>(args);
+    dict_ = std::make_shared<Dictionary>(args_);
+    if (args_->input == "-") {
+      // manage expectations
+      throw std::invalid_argument("Cannot use stdin for training!");
+    }
+    std::ifstream ifs(args_->input);
+    if (!ifs.is_open()) {
+      throw std::invalid_argument(args_->input +
+                                  " cannot be opened for training!");
+    }
+    dict_->readFromFile(ifs);
+    ifs.close();
 
-    if (args_->zeroinitwords) {
-      std::cout << "Setting all word vectors to zero." << std::endl;
-      for (int64_t i = 0; i < dict_->nwords(); i++) {
-        input_->multiplyRow(0.0, i);
+    if (args_->pretrainedVectors.size() != 0) {
+      std::cout << "Unsupported." << std::endl;
+      std::exit(1);
+      loadVectors(args_->pretrainedVectors);
+    } else {
+      /* clang-format off */
+      input_ = std::make_shared<Matrix>(dict_->nwords() +
+                                      args_->bucket, args_->dim);
+      /* clang-format on */
+      input_->uniform(1.0 / args_->dim);
+
+      if (args_->zeroinitwords) {
+        std::cout << "Setting all word vectors to zero." << std::endl;
+        for (int64_t i = 0; i < dict_->nwords(); i++) {
+          input_->multiplyRow(0.0, i);
+        }
+      }
+      if (args_->zeroinitngrams) {
+        std::cout << "Setting all ngram vectors to zero." << std::endl;
+        for (int64_t i = 0; i < args_->bucket; i++) {
+          input_->multiplyRow(0.0, i + dict_->nwords());
+        }
       }
     }
-    if (args_->zeroinitngrams) {
-      std::cout << "Setting all ngram vectors to zero." << std::endl;
-      for (int64_t i = 0; i < args_->bucket; i++) {
-        input_->multiplyRow(0.0, i + dict_->nwords());
-      }
+
+    if (args_->model == model_name::sup) {
+      output_ = std::make_shared<Matrix>(dict_->nlabels(), args_->dim);
+    } else {
+      output_ = std::make_shared<Matrix>(dict_->nwords(), args_->dim);
     }
+    output_->zero();
   }
 
   // Normalize regularization parameters
@@ -812,12 +833,6 @@ void FastText::train(const Args args) {
     num_nonzero_ngrams_ = args_->bucket;
   }
 
-  if (args_->model == model_name::sup) {
-    output_ = std::make_shared<Matrix>(dict_->nlabels(), args_->dim);
-  } else {
-    output_ = std::make_shared<Matrix>(dict_->nwords(), args_->dim);
-  }
-  output_->zero();
   startThreads();
   model_ = std::make_shared<Model>(input_, output_, args_, wi_counter_,
                                    wi_state_, wo_state_, &global_counter_,

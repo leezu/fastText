@@ -43,6 +43,7 @@ Args::Args() {
   t = 1e-4;
   label = "__label__";
   verbose = 2;
+  loadModel = "";
   pretrainedVectors = "";
   noSave = false;
   saveOutput = false;
@@ -178,6 +179,8 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         label = std::string(args.at(ai + 1));
       } else if (args[ai] == "-verbose") {
         verbose = std::stoi(args.at(ai + 1));
+      } else if (args[ai] == "-load") {
+        loadModel = std::string(args.at(ai + 1));
       } else if (args[ai] == "-pretrainedVectors") {
         pretrainedVectors = std::string(args.at(ai + 1));
       } else if (args[ai] == "-nodelayed-l2") {
@@ -287,6 +290,7 @@ void Args::printTrainingHelp() {
     << "  -loss               loss function {ns, hs, softmax} [" << lossToString(loss) << "]\n"
     << "  -thread             number of threads [" << thread << "]\n"
     << "  -pretrainedVectors  pretrained word vectors for supervised learning ["<< pretrainedVectors <<"]\n"
+    << "  -load               initialize parameters from file ["<< pretrainedVectors <<"]\n"
     << "  -noSave             whether any parameters should be saved ["<< boolToString(noSave) <<"]\n"
     << "  -saveOutput         whether output params should be saved [" << boolToString(saveOutput) << "]\n";
 }

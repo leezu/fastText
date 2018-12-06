@@ -89,8 +89,8 @@ class FastText {
   void saveModel(const std::string);
   void saveOutput();
   void saveModel();
-  void loadModel(std::istream&);
-  void loadModel(const std::string&);
+  void loadModel(std::istream&, const Args args = Args());
+  void loadModel(const std::string&, const Args args = Args());
   void printInfo(real, real, std::ostream&);
 
   void supervised(
