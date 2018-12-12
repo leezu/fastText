@@ -332,7 +332,6 @@ void Model::update(const std::vector<int32_t> &input, int32_t target, real lr,
 
   local_counter_ = (*global_counter_)++;
   if ((word_l2 > 0 || ngram_l2 > 0) && !args_->nodelayed_l2) {
-    grad_.zero();
     forceEagerUpdate(input, lr, word_l2, ngram_l2, local_counter_);
   }
 

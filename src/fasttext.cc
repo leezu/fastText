@@ -621,7 +621,8 @@ void FastText::eagerUpdateThread(int32_t threadId) {
     real norm;
     bool isWord = i < dict_->nwords();
     auto l2 = isWord ? args_->word_l2 : args_->ngram_l2;
-    if (l2) {
+    if (l2 && !args_->nodelayed_l2 && !(isWord && args_->fixwords) &&
+        !(!isWord && args_->fixngrams)) {
       norm = model.forceEagerUpdate(i, lr, l2, global_counter_.load());
       if (norm == -1) { // May return -1 if norm was not calculated
         norm = model.getNorm(i);
@@ -900,12 +901,20 @@ void FastText::startThreads() {
   real norm_ngram_sum {0};
   real norm_ngram_max {std::numeric_limits<real>::min()};
 
+
+  double lr;
+  if (args_->adagrad) {
+    lr = args_->lr;
+  } else {
+    lr = 0;  // progress is 100%
+  }
   for (int64_t i = 0; i < m; i++) {
     real norm;
     bool isWord = i < dict_->nwords();
     auto l2 = isWord ? args_->word_l2 : args_->ngram_l2;
-    if (l2) {
-      norm = model.forceEagerUpdate(i, 0, l2, global_counter_.load());
+    if (l2 && !args_->nodelayed_l2 && !(isWord && args_->fixwords) &&
+        !(!isWord && args_->fixngrams)) {
+      norm = model.forceEagerUpdate(i, lr, l2, global_counter_.load());
       if (norm == -1) {  // May return -1 if norm was not calculated
         norm = model.getNorm(i);
       }
