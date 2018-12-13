@@ -38,6 +38,8 @@ class FastText {
 
   std::shared_ptr<Matrix> input_;
   std::shared_ptr<Matrix> output_;
+  std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter_;
+  std::atomic_int64_t global_counter_ {0};
 
   std::shared_ptr<QMatrix> qinput_;
   std::shared_ptr<QMatrix> qoutput_;
@@ -157,14 +159,18 @@ class FastText {
   void supervised(
       Model& model,
       real lr,
+      const real wordl2,
+      const real ngraml2,
       const std::vector<int32_t>& line,
       const std::vector<int32_t>& labels);
 
   FASTTEXT_DEPRECATED("cbow is being deprecated.")
-  void cbow(Model& model, real lr, const std::vector<int32_t>& line);
+  void cbow(Model &model, real lr, const real wordl2, const real ngraml2,
+            const std::vector<int32_t> &line);
 
   FASTTEXT_DEPRECATED("skipgram is being deprecated.")
-  void skipgram(Model& model, real lr, const std::vector<int32_t>& line);
+  void skipgram(Model &model, real lr, const real wordl2, const real ngraml2,
+                const std::vector<int32_t> &line);
 
   FASTTEXT_DEPRECATED("selectEmbeddings is being deprecated.")
   std::vector<int32_t> selectEmbeddings(int32_t cutoff) const;

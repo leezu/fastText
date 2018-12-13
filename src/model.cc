@@ -10,6 +10,7 @@
 #include "model.h"
 #include "utils.h"
 
+#include <atomic>
 #include <assert.h>
 #include <algorithm>
 #include <stdexcept>
@@ -23,7 +24,10 @@ constexpr int64_t LOG_TABLE_SIZE = 512;
 Model::Model(
     std::shared_ptr<Matrix> wi,
     std::shared_ptr<Matrix> wo,
+    std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter,
+    std::atomic_int64_t *global_counter,
     std::shared_ptr<Args> args,
+    int64_t nwords,
     int32_t seed)
     : hidden_(args->dim),
       output_(wo->size(0)),
@@ -31,8 +35,11 @@ Model::Model(
       rng(seed),
       quant_(false) {
   wi_ = wi;
+  wi_counter_ = wi_counter;
+  global_counter_ = global_counter;
   wo_ = wo;
   args_ = args;
+  nwords_ = nwords;
   osz_ = wo->size(0);
   hsz_ = args->dim;
   negpos = 0;
@@ -161,6 +168,8 @@ void Model::computeHidden(const std::vector<int32_t>& input, Vector& hidden)
   hidden.mul(1.0 / input.size());
 }
 
+float Model::getNorm(const int32_t &it) { return wi_->l2NormRow(it); }
+
 bool Model::comparePairs(
     const std::pair<real, int32_t>& l,
     const std::pair<real, int32_t>& r) {
@@ -288,6 +297,8 @@ void Model::update(
     const std::vector<int32_t>& input,
     const std::vector<int32_t>& targets,
     int32_t targetIndex,
+    const real wordl2,
+    const real ngraml2,
     real lr) {
   if (input.size() == 0) {
     return;
@@ -304,11 +315,46 @@ void Model::update(
 
   nexamples_ += 1;
 
+  if ((wordl2 > 0 || ngraml2 > 0) && !args_->fal2) {
+    (*global_counter_)++;
+  }
   if (args_->model == model_name::sup) {
     grad_.mul(1.0 / input.size());
   }
   for (auto it = input.cbegin(); it != input.cend(); ++it) {
-    wi_->addRow(grad_, *it, 1.0);
+    if ((*it < nwords_ && args_->fixwords) ||
+        (*it >= nwords_ && args_->fixngrams)) {
+      continue;
+    }
+
+    auto l2 = (*it < nwords_) ? wordl2 : ngraml2;
+    proximalUpdate(*it, lr, l2);
+  }
+}
+
+void Model::proximalUpdate(const int32_t &it, const real &lr, const real &l2) {
+  if (l2 > 0) {
+    Vector tmp(grad_.size());
+    for (int i{0}; i < grad_.size(); i++) {
+      tmp[i] = wi_->at(it, i) + grad_[i];
+    }
+    double norm = tmp.norm();
+    double dB = 1;
+    if (!args_->fal2) {
+      dB = static_cast<double>((*global_counter_).load()) /
+           static_cast<double>(++(*wi_counter_)[it]);
+    }
+    double lambda = lr * l2 * dB;
+    if (norm > 0) {
+      double l_n = lambda / norm;
+      double scale = std::max(double(0), 1 - l_n);
+
+      wi_->addRescaleRow(grad_, it, scale);
+    } else {
+      wi_->multiplyRow(0, it);
+    }
+  } else {
+    wi_->addRow(grad_, it, 1);
   }
 }
 

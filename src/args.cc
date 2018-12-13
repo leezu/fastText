@@ -18,6 +18,9 @@ namespace fasttext {
 
 Args::Args() {
   lr = 0.05;
+  wordl2 = 0;
+  ngraml2 = 0;
+  fal2 = false;
   dim = 100;
   ws = 5;
   epoch = 5;
@@ -37,6 +40,10 @@ Args::Args() {
   verbose = 2;
   pretrainedVectors = "";
   saveOutput = false;
+  zeroinitwords = false;
+  zeroinitngrams = false;
+  fixwords = false;
+  fixngrams = false;
 
   qout = false;
   retrain = false;
@@ -108,6 +115,13 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         output = std::string(args.at(ai + 1));
       } else if (args[ai] == "-lr") {
         lr = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-wordl2") {
+        wordl2 = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-ngraml2") {
+        ngraml2 = std::stof(args.at(ai + 1));
+      } else if (args[ai] == "-fal2") {
+        fal2 = true;
+        ai--;
       } else if (args[ai] == "-lrUpdateRate") {
         lrUpdateRate = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-dim") {
@@ -155,6 +169,18 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         verbose = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-pretrainedVectors") {
         pretrainedVectors = std::string(args.at(ai + 1));
+      } else if (args[ai] == "-zeroinitwords") {
+        zeroinitwords = true;
+        ai--;
+      } else if (args[ai] == "-zeroinitngrams") {
+        zeroinitngrams = true;
+        ai--;
+      } else if (args[ai] == "-fixwords") {
+        fixwords = true;
+        ai--;
+      } else if (args[ai] == "-fixngrams") {
+        fixngrams = true;
+        ai--;
       } else if (args[ai] == "-saveOutput") {
         saveOutput = true;
         ai--;
@@ -228,6 +254,9 @@ void Args::printTrainingHelp() {
   std::cerr
       << "\nThe following arguments for training are optional:\n"
       << "  -lr                 learning rate [" << lr << "]\n"
+      << "  -wordl2             word regularization [" << wordl2 << "]\n"
+      << "  -ngraml2            ngram regularization [" << ngraml2 << "]\n"
+      << "  -fa-l2              frequency adaptive regularization [" << ngraml2 << "]\n"
       << "  -lrUpdateRate       change the rate of updates for the learning rate ["
       << lrUpdateRate << "]\n"
       << "  -dim                size of word vectors [" << dim << "]\n"

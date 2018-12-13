@@ -30,6 +30,9 @@ class Args {
   std::string input;
   std::string output;
   double lr;
+  double wordl2;
+  double ngraml2;
+  bool fal2;
   int lrUpdateRate;
   int dim;
   int ws;
@@ -49,6 +52,10 @@ class Args {
   int verbose;
   std::string pretrainedVectors;
   bool saveOutput;
+  bool zeroinitwords;
+  bool zeroinitngrams;
+  bool fixwords;
+  bool fixngrams;
 
   bool qout;
   bool retrain;

@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <random>
 #include <utility>
@@ -33,6 +34,9 @@ struct Node {
 class Model {
  protected:
   std::shared_ptr<Matrix> wi_;
+  std::shared_ptr<std::vector<std::atomic_int64_t>> wi_counter_;
+  std::atomic_int64_t *global_counter_;
+  int64_t nwords_;
   std::shared_ptr<Matrix> wo_;
   std::shared_ptr<QMatrix> qwi_;
   std::shared_ptr<QMatrix> qwo_;
@@ -69,7 +73,10 @@ class Model {
   Model(
       std::shared_ptr<Matrix>,
       std::shared_ptr<Matrix>,
+      std::shared_ptr<std::vector<std::atomic_int64_t>>,
+      std::atomic_int64_t *,
       std::shared_ptr<Args>,
+      int64_t,
       int32_t);
 
   real binaryLogistic(int32_t, bool, real);
@@ -107,7 +114,11 @@ class Model {
       const std::vector<int32_t>&,
       const std::vector<int32_t>&,
       int32_t,
-      real);
+      real,
+      const real,
+      const real);
+  void proximalUpdate(const int32_t &, const real &, const real &);
+  float getNorm(const int32_t &);
   real computeLoss(const std::vector<int32_t>&, int32_t, real);
   void computeHidden(const std::vector<int32_t>&, Vector&) const;
   void computeOutputSigmoid(Vector&, Vector&) const;
