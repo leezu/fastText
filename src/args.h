@@ -50,6 +50,7 @@ class Args {
   double t;
   std::string label;
   int verbose;
+  std::string loadModel;
   std::string pretrainedVectors;
   bool saveOutput;
   bool zeroinitwords;

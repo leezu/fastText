@@ -97,9 +97,9 @@ class FastText {
 
   void saveOutput(const std::string& filename);
 
-  void loadModel(std::istream& in);
+  void loadModel(std::istream& in, const Args args = Args());
 
-  void loadModel(const std::string& filename);
+  void loadModel(const std::string& filename, const Args args = Args());
 
   void getSentenceVector(std::istream& in, Vector& vec);
 
