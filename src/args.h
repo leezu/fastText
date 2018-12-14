@@ -57,6 +57,7 @@ class Args {
   bool zeroinitngrams;
   bool fixwords;
   bool fixngrams;
+  uint64_t seed;
 
   bool qout;
   bool retrain;

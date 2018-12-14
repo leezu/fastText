@@ -162,6 +162,8 @@ void Args::parseArgs(const std::vector<std::string>& args) {
         maxn = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-thread") {
         thread = std::stoi(args.at(ai + 1));
+      } else if (args[ai] == "-seed") {
+        seed = std::stoi(args.at(ai + 1));
       } else if (args[ai] == "-t") {
         t = std::stof(args.at(ai + 1));
       } else if (args[ai] == "-label") {
@@ -269,6 +271,7 @@ void Args::printTrainingHelp() {
       << "  -loss               loss function {ns, hs, softmax, one-vs-all} ["
       << lossToString(loss) << "]\n"
       << "  -thread             number of threads [" << thread << "]\n"
+      << "  -seed               seed to initialize weight matrices [" << seed << "]\n"
       << "  -pretrainedVectors  pretrained word vectors for supervised learning ["
       << pretrainedVectors << "]\n"
       << "  -load               pretrained word vectors for supervised learning ["

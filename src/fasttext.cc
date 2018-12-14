@@ -707,7 +707,7 @@ void FastText::loadVectors(const std::string& filename) {
   dict_->init();
   input_ =
       std::make_shared<Matrix>(dict_->nwords() + args_->bucket, args_->dim);
-  input_->uniform(1.0 / args_->dim);
+  input_->uniform(1.0 / args_->dim, args_->seed);
 
   for (size_t i = 0; i < n; i++) {
     int32_t idx = dict_->getId(words[i]);
@@ -755,7 +755,7 @@ void FastText::train(const Args& args) {
     } else {
       input_ =
           std::make_shared<Matrix>(dict_->nwords() + args_->bucket, args_->dim);
-      input_->uniform(1.0 / args_->dim);
+      input_->uniform(1.0 / args_->dim, args_->seed);
 
       if (args_->zeroinitwords) {
         std::cout << "Setting all word vectors to zero." << std::endl;

@@ -61,7 +61,7 @@ class Matrix {
     return n_;
   }
   void zero();
-  void uniform(real);
+  void uniform(real, uint64_t seed = 1);
   real dotRow(const Vector&, int64_t) const;
   void addRow(const Vector&, int64_t, real);
   void addRescaleRow(const Vector&, int64_t, real);
