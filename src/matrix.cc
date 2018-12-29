@@ -9,6 +9,7 @@
 
 #include "matrix.h"
 
+#include "mkl_cblas.h"
 #include <exception>
 #include <random>
 #include <stdexcept>
@@ -38,14 +39,7 @@ real Matrix::dotRow(const Vector& vec, int64_t i) const {
   assert(i >= 0);
   assert(i < m_);
   assert(vec.size() == n_);
-  real d = 0.0;
-  for (int64_t j = 0; j < n_; j++) {
-    d += at(i, j) * vec[j];
-  }
-  if (std::isnan(d)) {
-    throw std::runtime_error("Encountered NaN.");
-  }
-  return d;
+  return cblas_sdsdot(n_, 0, &at(i, 0), 1, &vec[0], 1);
 }
 
 void Matrix::addRow(const Vector& vec, int64_t i, real a) {
@@ -67,9 +61,7 @@ void Matrix::addRescaleRow(const Vector &vec, int64_t i, real a) {
 }
 
 void Matrix::multiplyRow(const real num, int64_t i) {
-  for (auto j = 0; j < n_; j++) {
-    at(i, j) *= num;
-  }
+  cblas_sscal(n_, num, &at(i, 0), 1);
 }
 
 void Matrix::multiplyRow(const Vector& nums, int64_t ib, int64_t ie) {
@@ -103,21 +95,7 @@ void Matrix::divideRow(const Vector& denoms, int64_t ib, int64_t ie) {
 }
 
 real Matrix::l2NormRow(int64_t i) const {
-  real ssq = 0;
-  real scale = 0;
-  for (auto j = 0; j < n_; j++) {
-    real atij = at(i, j);
-    if (atij != 0) {
-      auto abs = std::abs(atij);
-      if (scale < abs) {
-        ssq = 1 + ssq * (scale / abs) * (scale / abs);
-        scale = abs;
-      } else {
-        ssq = ssq + (abs / scale) * (abs / scale);
-      }
-    }
-  }
-  return scale * std::sqrt(ssq);
+  return cblas_snrm2(n_, &at(i, 0), 1);
 }
 
 void Matrix::l2NormRow(Vector& norms) const {

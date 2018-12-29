@@ -9,6 +9,7 @@
 
 #include "vector.h"
 
+#include "mkl_cblas.h"
 #include <assert.h>
 
 #include <cmath>
@@ -34,26 +35,11 @@ void Vector::zero() {
 }
 
 real Vector::norm() const {
-  real ssq = 0;
-  real scale = 0;
-  for (int64_t i = 0; i < size(); i++) {
-    if (data_[i] != 0) {
-      auto abs = std::abs(data_[i]);
-      if (scale < abs) {
-        ssq = 1 + ssq * (scale / abs) * (scale / abs);
-        scale = abs;
-      } else {
-        ssq = ssq + (abs / scale) * (abs / scale);
-      }
-    }
-  }
-  return scale * std::sqrt(ssq);
+  return cblas_snrm2(size(), &data_[0], 1);
 }
 
 void Vector::mul(real a) {
-  for (int64_t i = 0; i < size(); i++) {
-    data_[i] *= a;
-  }
+  cblas_sscal(size(), a, &data_[0], 1);
 }
 
 void Vector::addVector(const Vector& source) {
@@ -65,9 +51,7 @@ void Vector::addVector(const Vector& source) {
 
 void Vector::addVector(const Vector& source, real s) {
   assert(size() == source.size());
-  for (int64_t i = 0; i < size(); i++) {
-    data_[i] += s * source.data_[i];
-  }
+  cblas_saxpy(size(), s, &source.data_[0], 1, &data_[0], 1);
 }
 
 void Vector::addRow(const Matrix& A, int64_t i) {
@@ -83,9 +67,7 @@ void Vector::addRow(const Matrix& A, int64_t i, real a) {
   assert(i >= 0);
   assert(i < A.size(0));
   assert(size() == A.size(1));
-  for (int64_t j = 0; j < A.size(1); j++) {
-    data_[j] += a * A.at(i, j);
-  }
+  cblas_saxpy(size(), a, &A.at(i, 0), 1, &data_[0], 1);
 }
 
 void Vector::addRow(const QMatrix& A, int64_t i) {
