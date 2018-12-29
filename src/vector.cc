@@ -34,11 +34,20 @@ void Vector::zero() {
 }
 
 real Vector::norm() const {
-  real sum = 0;
+  real ssq = 0;
+  real scale = 0;
   for (int64_t i = 0; i < size(); i++) {
-    sum += data_[i] * data_[i];
+    if (data_[i] != 0) {
+      auto abs = std::abs(data_[i]);
+      if (scale < abs) {
+        ssq = 1 + ssq * (scale / abs) * (scale / abs);
+        scale = abs;
+      } else {
+        ssq = ssq + (abs / scale) * (abs / scale);
+      }
+    }
   }
-  return std::sqrt(sum);
+  return scale * std::sqrt(ssq);
 }
 
 void Vector::mul(real a) {
